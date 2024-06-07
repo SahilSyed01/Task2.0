@@ -134,78 +134,88 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(foundUser)
 }
-
-
 func GetUsers(w http.ResponseWriter, r *http.Request) {
-	if err := helpers.CheckUserType(r, "ADMIN"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+    adminID := r.Header.Get("admin_id")
+    if adminID == "" {
+        http.Error(w, "No admin_id provided", http.StatusBadRequest)
+        return
+    }
 
-	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
+    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+    defer cancel()
 
-	recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
-	if err != nil || recordPerPage < 1 {
-		recordPerPage = 10
-	}
-	page, err := strconv.Atoi(r.URL.Query().Get("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
+    recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
+    if err != nil || recordPerPage < 1 {
+        recordPerPage = 10 // Default value for recordPerPage
+    }
 
-	startIndex := (page - 1) * recordPerPage
-	startIndex, err = strconv.Atoi(r.URL.Query().Get("startIndex"))
+    page, err := strconv.Atoi(r.URL.Query().Get("page"))
+    if err != nil || page < 1 {
+        page = 1 // Default value for page
+    }
 
-	matchStage := bson.D{{"$match", bson.D{{}}}}
-	groupStage := bson.D{{"$group", bson.D{
-		{"_id", bson.D{{"_id", "null"}}},
-		{"total_count", bson.D{{"$sum", 1}}},
-		{"data", bson.D{{"$push", "$$ROOT"}}},
-	}}}
-	projectStage := bson.D{
-		{"$project", bson.D{
-			{"_id", 0},
-			{"total_count", 1},
-			{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
-		}},
-	}
+    startIndex := (page - 1) * recordPerPage
 
-	result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
-		matchStage, groupStage, projectStage,
-	})
-	if err != nil {
-		http.Error(w, "error occurred while listing user items", http.StatusInternalServerError)
-		return
-	}
+    matchStage := bson.D{{"$match", bson.D{{}}}}
+    groupStage := bson.D{{"$group", bson.D{
+        {"_id", bson.D{{"_id", "null"}}},
+        {"total_count", bson.D{{"$sum", 1}}},
+        {"data", bson.D{{"$push", "$$ROOT"}}},
+    }}}
+    projectStage := bson.D{
+        {"$project", bson.D{
+            {"_id", 0},
+            {"total_count", 1},
+            {"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
+        }},
+    }
 
-	var allusers []bson.M
-	if err = result.All(ctx, &allusers); err != nil {
-		log.Fatal(err)
-	}
+    result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+        matchStage, groupStage, projectStage,
+    })
+    if err != nil {
+        http.Error(w, "error occurred while listing user items", http.StatusInternalServerError)
+        return
+    }
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(allusers[0])
+    var allusers []bson.M
+    if err = result.All(ctx, &allusers); err != nil {
+        http.Error(w, "error occurred while decoding user items", http.StatusInternalServerError)
+        return
+    }
+
+    if len(allusers) == 0 {
+        http.Error(w, "No users found", http.StatusNotFound)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(allusers[0])
 }
 
 func GetUser(w http.ResponseWriter, r *http.Request) {
-	userId := r.URL.Path[len("/users/"):]
+    adminID := r.Header.Get("admin_id")
+    if adminID == "" {
+        http.Error(w, "No admin_id provided", http.StatusBadRequest)
+        return
+    }
 
-	if err := helpers.MatchUserTypeToUid(r, userId); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+    userID := r.URL.Path[len("/users/"):]
 
-	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-	defer cancel()
+    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+    defer cancel()
 
-	var user models.User
-	err := userCollection.FindOne(ctx, bson.M{"user_id": userId}).Decode(&user)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    var user models.User
+    err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+    if err != nil {
+        if err == mongo.ErrNoDocuments {
+            http.Error(w, "User not found", http.StatusNotFound)
+            return
+        }
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(user)
 }

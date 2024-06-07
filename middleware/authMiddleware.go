@@ -1,29 +1,32 @@
+// middleware/authMiddleware.go
+
 package middleware
 
 import (
-	"context"
-	"net/http"
-
-	"go-chat-app/helpers"
+    // "context"
+    "net/http"
+    "go-chat-app/helpers"
 )
 
 func Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clientToken := r.Header.Get("Authorization")
-		if clientToken == "" {
-			http.Error(w, "No Authorization header provided", http.StatusUnauthorized)
-			return
-		}
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        adminID := r.Header.Get("admin_id")
+        if adminID == "" {
+            http.Error(w, "No admin_id provided", http.StatusUnauthorized)
+            return
+        }
 
-		claims, err := helpers.ValidateToken(clientToken)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
+        userType, err := helpers.GetUserTypeByID(adminID)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusUnauthorized)
+            return
+        }
 
-		ctx := context.WithValue(r.Context(), "first_name", claims.First_name)
-		ctx = context.WithValue(ctx, "uid", claims.Uid)
+        if userType != "ADMIN" {
+            http.Error(w, "Only admin has this privilege", http.StatusUnauthorized)
+            return
+        }
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+        next.ServeHTTP(w, r)
+    })
 }

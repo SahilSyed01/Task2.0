@@ -3,14 +3,15 @@
 package helpers
 
 import (
-  //  "context"
-    "log"
-    // "os"
-  //  "time"
+	//  "context"
+	"go-chat-app/database"
+	"log"
+	// "os"
+	//  "time"
 
-    "github.com/dgrijalva/jwt-go"
-   // "go.mongodb.org/mongo-driver/bson/primitive"
-    "go.mongodb.org/mongo-driver/mongo"
+	"github.com/dgrijalva/jwt-go"
+	// "go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type SignedDetails struct {
@@ -19,7 +20,7 @@ type SignedDetails struct {
     jwt.StandardClaims
 }
 
-var userCollection *mongo.Collection // Initialize it properly as done in `controllers`
+var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 
 var SECRET_KEY string
 
