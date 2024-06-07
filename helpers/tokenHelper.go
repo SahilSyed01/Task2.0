@@ -5,7 +5,7 @@ package helpers
 import (
   //  "context"
     "log"
-    "os"
+    // "os"
   //  "time"
 
     "github.com/dgrijalva/jwt-go"
@@ -21,7 +21,7 @@ type SignedDetails struct {
 
 var userCollection *mongo.Collection // Initialize it properly as done in `controllers`
 
-var SECRET_KEY string = os.Getenv("SECRET_KEY")
+var SECRET_KEY string
 
 func GenerateAllTokens(firstName string, userID string) (signedToken string, err error) {
     accessTokenClaims := &SignedDetails{
