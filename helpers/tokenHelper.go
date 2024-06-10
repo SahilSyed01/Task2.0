@@ -3,14 +3,10 @@
 package helpers
 
 import (
-	//  "context"
 	"go-chat-app/database"
 	"log"
-	// "os"
-	//  "time"
 
 	"github.com/dgrijalva/jwt-go"
-	// "go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 

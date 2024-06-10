@@ -115,8 +115,8 @@ func Signup(w http.ResponseWriter, r *http.Request) {
  
     user.ID = primitive.NewObjectID()
     user.User_id = user.ID.Hex()
-    token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
-    user.Token = &token
+  //  token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
+   // user.Token = &token
  
     // Print the UI client token in the response
     fmt.Println("UI Client Token:", uiClientToken)
