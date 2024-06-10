@@ -95,8 +95,8 @@ func main() {
 		userPoolID := os.Getenv("USER_POOL_ID")
 		clientID := os.Getenv("CLIENT_ID")
 		clientSecret := os.Getenv("CLIENT_SECRET")
-		username := "mytestuser" // Replace with actual username
-		password := "saipujitha" // Replace with actual password
+		username := os.Getenv("username") // Replace with actual username
+		password := os.Getenv("password") // Replace with actual password
 
 		token, err := cognito.GetJWTToken(userPoolID, clientID, clientSecret, username, password)
 		if err != nil {

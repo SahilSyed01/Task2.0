@@ -3,7 +3,6 @@ module go-chat-app
 go 1.22.3
 
 require (
-	github.com/aws/aws-sdk-go v1.53.18
 	github.com/aws/aws-sdk-go-v2 v1.27.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-playground/validator/v10 v10.21.0
