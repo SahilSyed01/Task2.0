@@ -1,46 +1,55 @@
 package cognito
 
 import (
-    "fmt"
-    "net/http"
-    "strings"
-    "io/ioutil"
-    "encoding/json"
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 )
 
-type CognitoResponse struct {
-    AccessToken string `json:"access_token"`
-    TokenType   string `json:"token_type"`
-    ExpiresIn   int    `json:"expires_in"`
+// computeSecretHash computes the Cognito secret hash
+func computeSecretHash(clientSecret, clientID, username string) string {
+	h := hmac.New(sha256.New, []byte(clientSecret))
+	h.Write([]byte(username + clientID))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
+// GetJWTToken generates a JWT token using AWS Cognito
 func GetJWTToken(userPoolID, clientID, clientSecret, username, password string) (string, error) {
-    url := fmt.Sprintf("https://%s.auth.us-east-1.amazoncognito.com/oauth2/token", userPoolID)
+	// Load AWS configuration
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		return "", fmt.Errorf("failed to load AWS config: %v", err)
+	}
 
-    payload := strings.NewReader(fmt.Sprintf("grant_type=password&client_id=%s&username=%s&password=%s&scope=aws.cognito.signin.user.admin", clientID, username, password))
-    req, err := http.NewRequest("POST", url, payload)
-    if err != nil {
-        return "", err
-    }
+	// Create Cognito Identity Provider client
+	svc := cognitoidentityprovider.NewFromConfig(cfg)
 
-    req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-    req.SetBasicAuth(clientID, clientSecret)
+	// Compute the secret hash
+	secretHash := computeSecretHash(clientSecret, clientID, username)
 
-    res, err := http.DefaultClient.Do(req)
-    if err != nil {
-        return "", err
-    }
+	// Initialize the authentication parameters
+	authParams := map[string]string{
+		"USERNAME":    username,
+		"PASSWORD":    password,
+		"SECRET_HASH": secretHash,
+	}
 
-    defer res.Body.Close()
-    body, err := ioutil.ReadAll(res.Body)
-    if err != nil {
-        return "", err
-    }
+	// Initiate auth flow to get JWT token
+	authResult, err := svc.InitiateAuth(context.TODO(), &cognitoidentityprovider.InitiateAuthInput{
+		AuthFlow:       "USER_PASSWORD_AUTH",
+		ClientId:       aws.String(clientID),
+		AuthParameters: authParams,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to initiate auth: %v", err)
+	}
 
-    var cognitoResponse CognitoResponse
-    if err := json.Unmarshal(body, &cognitoResponse); err != nil {
-        return "", err
-    }
-
-    return cognitoResponse.AccessToken, nil
+	// Return the ID Token (JWT)
+	return *authResult.AuthenticationResult.IdToken, nil
 }
