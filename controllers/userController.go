@@ -9,14 +9,15 @@ import (
 	"strconv"
 	"time"
 
+	"go-chat-app/database"
 	"go-chat-app/helpers"
 	"go-chat-app/models"
-	"go-chat-app/database"
+
 	"github.com/go-playground/validator/v10"
-	"golang.org/x/crypto/bcrypt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
@@ -121,7 +122,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	helpers.GenerateToken(*foundUser.First_name, foundUser.User_id)
-	
+
 	// Respond with a simple success message in JSON format
 	successMsg := map[string]string{"message": "Login successful"}
 	response, err := json.Marshal(successMsg)
@@ -136,87 +137,87 @@ func Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetUsers(w http.ResponseWriter, r *http.Request) {
-    adminID := r.Header.Get("admin_id")
-    if adminID == "" {
-        http.Error(w, "No admin_id provided", http.StatusBadRequest)
-        return
-    }
+	adminID := r.Header.Get("admin_id")
+	if adminID == "" {
+		http.Error(w, "No admin_id provided", http.StatusBadRequest)
+		return
+	}
 
-    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-    defer cancel()
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
 
-    recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
-    if err != nil || recordPerPage < 1 {
-        recordPerPage = 10 // Default value for recordPerPage
-    }
+	recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
+	if err != nil || recordPerPage < 1 {
+		recordPerPage = 10 // Default value for recordPerPage
+	}
 
-    page, err := strconv.Atoi(r.URL.Query().Get("page"))
-    if err != nil || page < 1 {
-        page = 1 // Default value for page
-    }
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1 // Default value for page
+	}
 
-    startIndex := (page - 1) * recordPerPage
+	startIndex := (page - 1) * recordPerPage
 
-    matchStage := bson.D{{"$match", bson.D{{}}}}
-    groupStage := bson.D{{"$group", bson.D{
-        {"_id", bson.D{{"_id", "null"}}},
-        {"total_count", bson.D{{"$sum", 1}}},
-        {"data", bson.D{{"$push", "$$ROOT"}}},
-    }}}
-    projectStage := bson.D{
-        {"$project", bson.D{
-            {"_id", 0},
-            {"total_count", 1},
-            {"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
-        }},
-    }
+	matchStage := bson.D{{"$match", bson.D{{}}}}
+	groupStage := bson.D{{"$group", bson.D{
+		{"_id", bson.D{{"_id", "null"}}},
+		{"total_count", bson.D{{"$sum", 1}}},
+		{"data", bson.D{{"$push", "$$ROOT"}}},
+	}}}
+	projectStage := bson.D{
+		{"$project", bson.D{
+			{"_id", 0},
+			{"total_count", 1},
+			{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
+		}},
+	}
 
-    result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
-        matchStage, groupStage, projectStage,
-    })
-    if err != nil {
-        http.Error(w, "error occurred while listing user items", http.StatusInternalServerError)
-        return
-    }
+	result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+		matchStage, groupStage, projectStage,
+	})
+	if err != nil {
+		http.Error(w, "error occurred while listing user items", http.StatusInternalServerError)
+		return
+	}
 
-    var allusers []bson.M
-    if err = result.All(ctx, &allusers); err != nil {
-        http.Error(w, "error occurred while decoding user items", http.StatusInternalServerError)
-        return
-    }
+	var allusers []bson.M
+	if err = result.All(ctx, &allusers); err != nil {
+		http.Error(w, "error occurred while decoding user items", http.StatusInternalServerError)
+		return
+	}
 
-    if len(allusers) == 0 {
-        http.Error(w, "No users found", http.StatusNotFound)
-        return
-    }
+	if len(allusers) == 0 {
+		http.Error(w, "No users found", http.StatusNotFound)
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(allusers[0])
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(allusers[0])
 }
 
 func GetUser(w http.ResponseWriter, r *http.Request) {
-    adminID := r.Header.Get("admin_id")
-    if adminID == "" {
-        http.Error(w, "No admin_id provided", http.StatusBadRequest)
-        return
-    }
+	adminID := r.Header.Get("admin_id")
+	if adminID == "" {
+		http.Error(w, "No admin_id provided", http.StatusBadRequest)
+		return
+	}
 
-    userID := r.URL.Path[len("/users/"):]
+	userID := r.URL.Path[len("/users/"):]
 
-    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-    defer cancel()
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
 
-    var user models.User
-    err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
-    if err != nil {
-        if err == mongo.ErrNoDocuments {
-            http.Error(w, "User not found", http.StatusNotFound)
-            return
-        }
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+	var user models.User
+	err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(user)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }
