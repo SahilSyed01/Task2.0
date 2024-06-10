@@ -6,17 +6,21 @@ import (
     "fmt"
     "log"
     "net/http"
+    "os"
     "strconv"
+    "strings"
     "time"
  
+    "go-chat-app/database"
     "go-chat-app/helpers"
     "go-chat-app/models"
-    "go-chat-app/database"
+ 
+    "github.com/ShreerajShettyK/cognitoJwtAuthenticator"
     "github.com/go-playground/validator/v10"
-    "golang.org/x/crypto/bcrypt"
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/mongo"
+    "golang.org/x/crypto/bcrypt"
 )
  
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
@@ -41,10 +45,38 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
     }
     return check, msg
 }
- 
 func Signup(w http.ResponseWriter, r *http.Request) {
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
+ 
+    // Extract the JWT token from the Authorization header
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+        return
+    }
+ 
+    // Split the header value to extract the token part
+    authToken := strings.Split(authHeader, "Bearer ")
+    if len(authToken) != 2 {
+        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+        return
+    }
+    uiClientToken := authToken[1]
+ 
+    // Validate the JWT token
+    ctx = context.Background()
+    region := os.Getenv("REGION")
+    userPoolId := os.Getenv("USER_POOL_ID")
+    tokenString := uiClientToken
+ 
+    _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolId, tokenString)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+        return
+    }
+ 
+    // Token is valid, proceed with signup logic
  
     var user models.User
  
@@ -81,12 +113,13 @@ func Signup(w http.ResponseWriter, r *http.Request) {
         return
     }
  
-    //user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-    //user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
     user.ID = primitive.NewObjectID()
     user.User_id = user.ID.Hex()
     token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
     user.Token = &token
+ 
+    // Print the UI client token in the response
+    fmt.Println("UI Client Token:", uiClientToken)
  
     resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
     if insertErr != nil {
@@ -100,6 +133,35 @@ func Login(w http.ResponseWriter, r *http.Request) {
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
  
+    // Extract the JWT token from the Authorization header
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+        return
+    }
+ 
+    // Split the header value to extract the token part
+    authToken := strings.Split(authHeader, "Bearer ")
+    if len(authToken) != 2 {
+        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+        return
+    }
+    uiClientToken := authToken[1]
+ 
+    // Validate the JWT token
+    ctx = context.Background()
+    region := os.Getenv("REGION")
+    userPoolID := os.Getenv("USER_POOL_ID")
+    tokenString := uiClientToken
+ 
+    _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+        return
+    }
+ 
+    // Token is valid, proceed with login logic
+ 
     var user models.User
     var foundUser models.User
  
@@ -108,7 +170,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
         return
     }
  
-    err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
+    err = userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
     if err != nil {
         http.Error(w, "email or password is incorrect", http.StatusUnauthorized)
         return
@@ -120,10 +182,20 @@ func Login(w http.ResponseWriter, r *http.Request) {
         return
     }
  
-    helpers.GenerateToken(*foundUser.First_name, foundUser.User_id)
-   
+    fmt.Println("UI Client Token:",uiClientToken)
+ 
+    // Generate token with First_name and UID
+    token, err := helpers.GenerateToken(*foundUser.First_name, foundUser.User_id)
+    if err != nil {
+        http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+        return
+    }
+ 
+    // Set token in response header
+    w.Header().Set("Authorization", "Bearer "+token)
+ 
     // Respond with a simple success message in JSON format
-    successMsg := map[string]string{"message": "Login successful"}
+    successMsg := map[string]string{"Success": "True", "ui_client_token":uiClientToken}
     response, err := json.Marshal(successMsg)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -134,17 +206,38 @@ func Login(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusOK)
     w.Write(response)
 }
- 
 func GetUsers(w http.ResponseWriter, r *http.Request) {
-    adminID := r.Header.Get("admin_id")
-    if adminID == "" {
-        http.Error(w, "No admin_id provided", http.StatusBadRequest)
-        return
-    }
- 
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
  
+    // Extract the JWT token from the Authorization header
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+        return
+    }
+ 
+    // Split the header value to extract the token part
+    authToken := strings.Split(authHeader, "Bearer ")
+    if len(authToken) != 2 {
+        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+        return
+    }
+    uiClientToken := authToken[1]
+ 
+    // Validate the JWT token
+    ctx = context.Background()
+    region := os.Getenv("REGION")
+    userPoolID := os.Getenv("USER_POOL_ID")
+    tokenString := uiClientToken
+ 
+    _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+        return
+    }
+ 
+    // Token is valid, proceed with fetching users
     recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
     if err != nil || recordPerPage < 1 {
         recordPerPage = 10 // Default value for recordPerPage
@@ -195,19 +288,41 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 }
  
 func GetUser(w http.ResponseWriter, r *http.Request) {
-    adminID := r.Header.Get("admin_id")
-    if adminID == "" {
-        http.Error(w, "No admin_id provided", http.StatusBadRequest)
-        return
-    }
- 
-    userID := r.URL.Path[len("/users/"):]
- 
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
  
+    // Extract the JWT token from the Authorization header
+    authHeader := r.Header.Get("Authorization")
+    if authHeader == "" {
+        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+        return
+    }
+ 
+    // Split the header value to extract the token part
+    authToken := strings.Split(authHeader, "Bearer ")
+    if len(authToken) != 2 {
+        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+        return
+    }
+    uiClientToken := authToken[1]
+ 
+    // Validate the JWT token
+    ctx = context.Background()
+    region := os.Getenv("REGION")
+    userPoolID := os.Getenv("USER_POOL_ID")
+    tokenString := uiClientToken
+ 
+    _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
+    if err != nil {
+        http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+        return
+    }
+ 
+    // Token is valid, proceed with fetching the user
+    userID := r.URL.Path[len("/users/"):]
+ 
     var user models.User
-    err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+    err = userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
     if err != nil {
         if err == mongo.ErrNoDocuments {
             http.Error(w, "User not found", http.StatusNotFound)
