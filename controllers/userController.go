@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,13 +15,12 @@ import (
 	"go-chat-app/helpers"
 	"go-chat-app/models"
 
-
+	"github.com/ShreerajShettyK/cognitoJwtAuthenticator"
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
-
 )
  
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
@@ -46,128 +46,157 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
     return check, msg
 }
 func Signup(w http.ResponseWriter, r *http.Request) {
-    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-    defer cancel()
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
 
-    // Extract the JWT token from the Authorization header
-    authHeader := r.Header.Get("Authorization")
-    if authHeader == "" {
-        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
-        return
-    }
+	// Extract the JWT token from the Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+		return
+	}
 
-    // Split the header value to extract the token part
-    authToken := strings.Split(authHeader, "Bearer ")
-    if len(authToken) != 2 {
-        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
-        return
-    }
-    uiClientToken := authToken[1]
+	// Split the header value to extract the token part
+	authToken := strings.Split(authHeader, "Bearer ")
+	if len(authToken) != 2 {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		return
+	}
+	uiClientToken := authToken[1]
 
-    var user models.User
+	// Validate the JWT token
+	ctx = context.Background()
+	region := "us-east-1"
+	userPoolId := "us-east-1_icXeg2eiv"
+	tokenString := uiClientToken
 
-    if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
+	_, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolId, tokenString)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+		return
+	}
 
-    validationErr := validate.Struct(user)
-    if validationErr != nil {
-        http.Error(w, validationErr.Error(), http.StatusBadRequest)
-        return
-    }
+	// Token is valid, proceed with signup logic
 
-    count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
-    if err != nil {
-        log.Panic(err)
-        http.Error(w, "error occurred while checking for the email", http.StatusInternalServerError)
-        return
-    }
+	var user models.User
 
-    password := HashPassword(*user.Password)
-    user.Password = &password
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-    count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
-    if err != nil {
-        log.Panic(err)
-        http.Error(w, "error occurred while checking for the phone number", http.StatusInternalServerError)
-        return
-    }
+	validationErr := validate.Struct(user)
+	if validationErr != nil {
+		http.Error(w, validationErr.Error(), http.StatusBadRequest)
+		return
+	}
 
-    if count > 0 {
-        http.Error(w, "this email or phone number already exists", http.StatusInternalServerError)
-        return
-    }
+	count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
+	if err != nil {
+		log.Panic(err)
+		http.Error(w, "error occurred while checking for the email", http.StatusInternalServerError)
+		return
+	}
 
-    user.ID = primitive.NewObjectID()
-    user.User_id = user.ID.Hex()
-    token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
-    user.Token = &token
+	password := HashPassword(*user.Password)
+	user.Password = &password
 
-    // Print the UI client token in the response
-    fmt.Println("UI Client Token:", uiClientToken)
+	count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
+	if err != nil {
+		log.Panic(err)
+		http.Error(w, "error occurred while checking for the phone number", http.StatusInternalServerError)
+		return
+	}
 
-    resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
-    if insertErr != nil {
-        msg := fmt.Sprintf("User item was not created")
-        http.Error(w, msg, http.StatusInternalServerError)
-        return
-    }
-    json.NewEncoder(w).Encode(resultInsertionNumber)
+	if count > 0 {
+		http.Error(w, "this email or phone number already exists", http.StatusInternalServerError)
+		return
+	}
+
+	user.ID = primitive.NewObjectID()
+	user.User_id = user.ID.Hex()
+	token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
+	user.Token = &token
+
+	// Print the UI client token in the response
+	fmt.Println("UI Client Token:", uiClientToken)
+
+	resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
+	if insertErr != nil {
+		msg := fmt.Sprintf("User item was not created")
+		http.Error(w, msg, http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(resultInsertionNumber)
 }
+
 func Login(w http.ResponseWriter, r *http.Request) {
-    var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-    defer cancel()
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
 
-    // Extract the JWT token from the Authorization header
-    authHeader := r.Header.Get("Authorization")
-    if authHeader == "" {
-        http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
-        return
-    }
+	// Extract the JWT token from the Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+		return
+	}
 
-    // Split the header value to extract the token part
-    authToken := strings.Split(authHeader, "Bearer ")
-    if len(authToken) != 2 {
-        http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
-        return
-    }
-    uiClientToken := authToken[1]
+	// Split the header value to extract the token part
+	authToken := strings.Split(authHeader, "Bearer ")
+	if len(authToken) != 2 {
+		http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+		return
+	}
+	uiClientToken := authToken[1]
 
-    var user models.User
-    var foundUser models.User
+	// Validate the JWT token
+	ctx = context.Background()
+	region := os.Getenv("REGION")
+	userPoolID := os.Getenv("USER_POOL_ID")
+	tokenString := uiClientToken
 
-    if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
+	_, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
+		return
+	}
 
-    err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
-    if err != nil {
-        http.Error(w, "email or password is incorrect", http.StatusUnauthorized)
-        return
-    }
+	// Token is valid, proceed with login logic
 
-    passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
-    if !passwordIsValid {
-        http.Error(w, msg, http.StatusUnauthorized)
-        return
-    }
+	var user models.User
+	var foundUser models.User
 
-    // Print the UI client token in the response
-    fmt.Println("UI Client Token:", uiClientToken)
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-    // Respond with a simple success message in JSON format
-    successMsg := map[string]string{"message": "Login successful", "ui_client_token": uiClientToken}
-    response, err := json.Marshal(successMsg)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+	err = userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
+	if err != nil {
+		http.Error(w, "email or password is incorrect", http.StatusUnauthorized)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
-    w.Write(response)
+	passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
+	if !passwordIsValid {
+		http.Error(w, msg, http.StatusUnauthorized)
+		return
+	}
+
+	// Print the UI client token in the response
+	fmt.Println("UI Client Token:", uiClientToken)
+
+	// Respond with a simple success message in JSON format
+	successMsg := map[string]string{"message": "Login successful", "ui_client_token": uiClientToken}
+	response, err := json.Marshal(successMsg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(response)
 }
 
  

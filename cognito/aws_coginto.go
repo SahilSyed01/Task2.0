@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	// "log"
 
+	// "github.com/ShreerajShettyK/cognitoJwtAuthenticator"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
@@ -53,3 +55,4 @@ func GetJWTToken(userPoolID, clientID, clientSecret, username, password string) 
 	// Return the ID Token (JWT)
 	return *authResult.AuthenticationResult.IdToken, nil
 }
+
