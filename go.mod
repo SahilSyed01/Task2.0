@@ -28,6 +28,7 @@ require (
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.27.17
+	github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider v1.38.4
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.29.2
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
