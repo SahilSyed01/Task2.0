@@ -14,11 +14,13 @@ import (
 	"go-chat-app/helpers"
 	"go-chat-app/models"
 
+
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
+
 )
  
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
@@ -113,7 +115,6 @@ func Signup(w http.ResponseWriter, r *http.Request) {
     }
     json.NewEncoder(w).Encode(resultInsertionNumber)
 }
-
 func Login(w http.ResponseWriter, r *http.Request) {
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
