@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	// "strings"
 	// "os"
 	"go-chat-app/cognito"
 )
@@ -40,18 +41,27 @@ func main() {
 
 	// log.Fatal(http.ListenAndServe(":"+port, nil))
 
+	// cognitoDomain := "pujitha.auth.us-east-1.amazoncognito.com"
 
-	userPoolID := "us-east-1_bcezkbKcV"
-    clientID :="3nhdeivacuskqno6992ar4bikg"
-    clientSecret :="sfhflsbea9vecouaqb9eik4bu6410qijr29uklcphv9mv5k0qvs"
-    username := "user"
-    password := "User@123"
+	// // Split the domain by "." and take the first part
+	// parts := strings.Split(cognitoDomain, ".")
 
-    token, err := cognito.GetJWTToken(userPoolID, clientID, clientSecret, username, password)
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
+	client := &cognito.CognitoClient{
+		ClientID:     "5hi3p0d0lvp7fcl1o05fchj8ui",
+		ClientSecret: "1fe806n734kov79tm5h504fsf3h38v0nmd01e205kbuqaorfm5qn",
+		// PoolID:       "us-east-1_bLcLm4KQ2",
+		Region:       "us-east-1",
+		Domain:       "mytestcognt", 
+	}
 
-    fmt.Println("JWT Token:", token)
+	username := "mytestuser"
+	password := "saipujitha"
+
+	jwt, err := client.GetJWT(username, password)
+	if err != nil {
+		fmt.Println("Error getting JWT:", err)
+		return
+	}
+
+	fmt.Println("JWT Token:", jwt)
 }

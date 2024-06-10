@@ -85,7 +85,7 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 	//user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	user.ID = primitive.NewObjectID()
 	user.User_id = user.ID.Hex()
-	token, _ := helpers.GenerateAllTokens(*user.First_name, user.User_id)
+	token, _ := helpers.GenerateToken(*user.First_name, user.User_id)
 	user.Token = &token
 
 	resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
@@ -96,7 +96,6 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(resultInsertionNumber)
 }
-
 func Login(w http.ResponseWriter, r *http.Request) {
 	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 	defer cancel()
@@ -111,29 +110,31 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
 	if err != nil {
-		http.Error(w, "email or password is incorrect", http.StatusInternalServerError)
+		http.Error(w, "email or password is incorrect", http.StatusUnauthorized)
 		return
 	}
 
 	passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
 	if !passwordIsValid {
-		http.Error(w, msg, http.StatusInternalServerError)
+		http.Error(w, msg, http.StatusUnauthorized)
 		return
 	}
 
-	if foundUser.Email == nil {
-		http.Error(w, "user not found", http.StatusInternalServerError)
-		return
-	}
-	helpers.GenerateAllTokens(*foundUser.First_name, foundUser.User_id)
-	err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
-
+	helpers.GenerateToken(*foundUser.First_name, foundUser.User_id)
+	
+	// Respond with a simple success message in JSON format
+	successMsg := map[string]string{"message": "Login successful"}
+	response, err := json.Marshal(successMsg)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	json.NewEncoder(w).Encode(foundUser)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(response)
 }
+
 func GetUsers(w http.ResponseWriter, r *http.Request) {
     adminID := r.Header.Get("admin_id")
     if adminID == "" {
