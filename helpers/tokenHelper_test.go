@@ -3,9 +3,9 @@
 package helpers
 
 import (
-	// "errors"
 	"testing"
 
+	// "github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -80,6 +80,15 @@ func TestValidateToken_ErrorCastingClaims(t *testing.T) {
 
     // Call the method being tested
     _, err := ValidateToken("valid-signed-token")
+
+    // Assertions
+    assert.Error(t, err)
+}
+
+
+func TestValidateToken_EmptyToken(t *testing.T) {
+    // Call the method being tested with an empty token
+    _, err := ValidateToken("")
 
     // Assertions
     assert.Error(t, err)

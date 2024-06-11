@@ -62,7 +62,7 @@ func Signup(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
         return
     }
- 
+  
     // Split the header value to extract the token part
     authToken := strings.Split(authHeader, "Bearer ")
     if len(authToken) != 2 {
@@ -341,4 +341,17 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
  
     w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(user)
+}
+
+func GetUserByID(userID string) (*models.User, error) {
+    var user models.User
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+ 
+    err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+    if err != nil {
+        return nil, err
+    }
+ 
+    return &user, nil
 }
