@@ -1,95 +1,86 @@
-package helpers_test
+// helpers/tokenHelper_test.go
+
+package helpers
 
 import (
-	"errors"
-	"go-chat-app/helpers"
+	// "errors"
 	"testing"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-type mockToken struct {
-	tokenString string
-	err         error
+// Mocking jwt.Token for testing
+type MockToken struct {
+    mock.Mock
 }
 
-func (m *mockToken) SignedString(_ []byte) (string, error) {
-	return m.tokenString, m.err
-}
-
-func (m *mockToken) ParseWithClaims(tokenString string, claims jwt.Claims, keyFunc jwt.Keyfunc) (*jwt.Token, error) {
-	return &jwt.Token{}, m.err
+func (m *MockToken) SignedString(key []byte) (string, error) {
+    args := m.Called(key)
+    return args.String(0), args.Error(1)
 }
 
 func TestGenerateToken(t *testing.T) {
-	testCases := []struct {
-		name       string
-		firstName  string
-		userID     string
-		secretKey  string
-		mockToken  *mockToken
-		expectErr  bool
-	}{
-		{
-			name:      "Successful token generation",
-			firstName: "John",
-			userID:    "123456",
-			secretKey: "secret",
-			mockToken: &mockToken{
-				tokenString: "generated_token",
-				err:         nil,
-			},
-			expectErr: false,
-		},
-		// Add more test cases here as needed
-	}
+    // Mocking SECRET_KEY
+    SECRET_KEY = "secret"
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			helpers.SECRET_KEY = tc.secretKey
-			helpers.MockTokenGenerator = tc.mockToken
-			_, err := helpers.GenerateToken(tc.firstName, tc.userID)
-			assert.Equal(t, tc.expectErr, err != nil)
-		})
-	}
+    // Test positive case
+    firstName := "John"
+    userID := "123"
+    expectedToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmaXJzdF9uYW1lIjoiSm9obiIsInVpZCI6IjEyMyJ9.wKBasWto25zYrg_X_WuMcJde1TJ4RB5EyYqJmw-dBC4"
+
+    // Mock token
+    mockToken := new(MockToken)
+    mockToken.On("SignedString", []byte("secret")).Return(expectedToken, nil)
+
+    // Call the method being tested
+    token, err := GenerateToken(firstName, userID)
+
+    // Assert the result
+    if err != nil {
+        t.Errorf("Error generating token: %v", err)
+    }
+    if token != expectedToken {
+        t.Errorf("Generated token does not match expected token. Expected: %s, Got: %s", expectedToken, token)
+    }
 }
 
-func TestValidateToken(t *testing.T) {
-    testCases := []struct {
-        name      string
-        token     string
-        secretKey string
-        mockToken *mockToken
-        expectErr bool
-    }{
-        {
-            name:      "valid token",
-            token:     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
-            mockToken: &mockToken{
-                tokenString: "valid_token",
-                err:         nil,
-            },
-            expectErr: false,
-        },
-        {
-            name:      "Invalid token",
-            token:     "invalid_token",
-            mockToken: &mockToken{
-                tokenString: "invalid_token",
-                err:         errors.New("token validation failed"),
-            },
-            expectErr: true,
-        },
-        // Add more test cases here as needed
-    }
 
-    for _, tc := range testCases {
-        t.Run(tc.name, func(t *testing.T) {
-            helpers.SECRET_KEY = tc.secretKey
-            helpers.MockTokenParser = tc.mockToken
-            _, err := helpers.ValidateToken(tc.token)
-            assert.Equal(t, tc.expectErr, err != nil)
-        })
-    }
+func TestValidateToken(t *testing.T) {
+    // Mocking SECRET_KEY
+    SECRET_KEY = "secret"
+
+    // Sample token
+    signedToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmaXJzdF9uYW1lIjoiSm9obiIsInVpZCI6IjEyMyJ9.wKBasWto25zYrg_X_WuMcJde1TJ4RB5EyYqJmw-dBC4"
+
+    // Call the method being tested
+    claims, err := ValidateToken(signedToken)
+
+    // Assert the result
+    assert.Nil(t, err)
+    assert.Equal(t, "John", claims.First_name)
+    assert.Equal(t, "123", claims.Uid)
+
+    // Test negative case (error in parsing token)
+    signedToken = "invalid-token"
+    _, err = ValidateToken(signedToken)
+
+    // Assert the result
+    assert.NotNil(t, err)
+}
+
+
+func TestValidateToken_ErrorCastingClaims(t *testing.T) {
+    // Mock token claims
+    invalidClaims := &SignedDetails{}
+
+    // Mock token to return invalid claims
+    mockToken := new(MockToken)
+    mockToken.On("Claims").Return(invalidClaims)
+
+    // Call the method being tested
+    _, err := ValidateToken("valid-signed-token")
+
+    // Assertions
+    assert.Error(t, err)
 }

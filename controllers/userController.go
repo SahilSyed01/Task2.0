@@ -23,8 +23,15 @@ import (
     "golang.org/x/crypto/bcrypt"
 )
  
+type JwtAuthenticator func(ctx context.Context, region, userPoolID, tokenString string) (interface{}, error)
+
+// MockValidateToken is a mock implementation of JwtAuthenticator for testing
+var MockValidateToken JwtAuthenticator
+
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 var validate = validator.New()
+
+
  
 func HashPassword(password string) string {
     bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)

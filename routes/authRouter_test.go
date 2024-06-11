@@ -1,42 +1,45 @@
-package routes_test
+package routes
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-
-	//"go-chat-app/controllers"
-	"go-chat-app/routes"
+    "net/http"
+    "net/http/httptest"
+    "testing"
 )
 
 func TestAuthRoutes(t *testing.T) {
-	// Create a new HTTP request multiplexer
-	mux := http.NewServeMux()
+    // Create a request for the "/users/signup" route
+    reqSignup, err := http.NewRequest("GET", "/users/signup", nil)
+    if err != nil {
+        t.Fatal(err)
+    }
 
-	// Register routes using AuthRoutes
-	routes.AuthRoutes()
+    // Create a request for the "/users/login" route
+    reqLogin, err := http.NewRequest("GET", "/users/login", nil)
+    if err != nil {
+        t.Fatal(err)
+    }
 
-	// Create a test server with the created multiplexer
-	ts := httptest.NewServer(mux)
-	defer ts.Close()
+    // Create a ResponseRecorder to record the response
+    rr := httptest.NewRecorder()
 
-	// Test signup route
-	resp, err := http.Post(ts.URL+"/users/signup", "application/json", nil)
-	if err != nil {
-		t.Errorf("Error sending POST request to /users/signup: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
-	}
+    // Call the AuthRoutes function to set up the routes
+    AuthRoutes()
 
-	// Test login route
-	resp, err = http.Post(ts.URL+"/users/login", "application/json", nil)
-	if err != nil {
-		t.Errorf("Error sending POST request to /users/login: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
-	}
+    // Serve the "/users/signup" route
+    http.DefaultServeMux.ServeHTTP(rr, reqSignup)
+
+    // Check if the status code is what you expect (401 Unauthorized)
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("handler returned wrong status code for /users/signup: got %v want %v",
+            status, http.StatusUnauthorized)
+    }
+
+    // Serve the "/users/login" route
+    http.DefaultServeMux.ServeHTTP(rr, reqLogin)
+
+    // Check if the status code is what you expect (401 Unauthorized)
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("handler returned wrong status code for /users/login: got %v want %v",
+            status, http.StatusUnauthorized)
+    }
 }

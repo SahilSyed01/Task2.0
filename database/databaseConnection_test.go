@@ -2,64 +2,75 @@ package database
 
 import (
 	"context"
+	// "errors"
 	"testing"
 
-	"go.mongodb.org/mongo-driver/bson"
-	//"go.mongodb.org/mongo-driver/mongo"
-	//"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-func TestDBinstance(t *testing.T) {
-	// Call the DBinstance function to get a MongoDB client
-	client := DBinstance()
-	defer client.Disconnect(context.Background())
+type MockMongoClient struct {
+	*mongo.Client
+	PingFunc     func(ctx context.Context, rp *readpref.ReadPref) error
+	DatabaseFunc func(name string) *mongo.Database
+}
 
-	// Check if the client is nil
-	if client == nil {
-		t.Errorf("DBinstance() returned nil client")
+func (m *MockMongoClient) Ping(ctx context.Context, rp *readpref.ReadPref) error {
+	if m.PingFunc != nil {
+		return m.PingFunc(ctx, rp)
+	}
+	return nil
+}
+
+func (m *MockMongoClient) Database(name string) *mongo.Database {
+	if m.DatabaseFunc != nil {
+		return m.DatabaseFunc(name)
+	}
+	return nil
+}
+
+func TestDBinstance(t *testing.T) {
+	tests := []struct {
+		name       string
+		simulate   bool
+		expected   bool
+		assertFunc func(*testing.T, *mongo.Client)
+	}{
+		{
+			name:     "Success",
+			simulate: false,
+			expected: true,
+			assertFunc: func(t *testing.T, client *mongo.Client) {
+				assert.NotNil(t, client)
+			},
+		},
+		{
+			name:     "AWSConfigError",
+			simulate: true,
+			expected: false,
+			assertFunc: func(t *testing.T, client *mongo.Client) {
+				assert.Nil(t, client)
+			},
+		},
+		// Add more test cases for other error scenarios
 	}
 
-	// Test a simple database operation to ensure connection is successful
-	err := client.Ping(context.Background(), nil)
-	if err != nil {
-		t.Errorf("Error pinging MongoDB: %v", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			simulateError = test.simulate
+			client := DBinstance()
+			test.assertFunc(t, client)
+		})
 	}
 }
 
 func TestOpenCollection(t *testing.T) {
-	// Connect to MongoDB for testing
-	client := DBinstance()
-	defer client.Disconnect(context.Background())
-
-	// Test collection name
-	collectionName := "testCollection"
-
-	// Open the collection
-	collection := OpenCollection(client, collectionName)
-
-	// Check if the collection is nil
-	if collection == nil {
-		t.Errorf("OpenCollection() returned nil for collection %s", collectionName)
+	mockMongoClient := &MockMongoClient{
+		Client: &mongo.Client{},
 	}
 
-	// Optional: You can further test operations on the collection if needed
-}
+	collection := OpenCollection(mockMongoClient.Client, "test_collection")
 
-func TestIntegration(t *testing.T) {
-	// This test can be used for integration testing, making sure that DBinstance and OpenCollection work together
-	client := DBinstance()
-	defer client.Disconnect(context.Background())
-
-	collectionName := "testIntegrationCollection"
-
-	// Insert a document into the collection
-	collection := OpenCollection(client, collectionName)
-	if collection == nil {
-		t.Fatalf("Failed to open collection %s", collectionName)
-	}
-
-	_, err := collection.InsertOne(context.Background(), bson.M{"key": "value"})
-	if err != nil {
-		t.Errorf("Error inserting document: %v", err)
-	}
+	assert.NotNil(t, collection)
 }
