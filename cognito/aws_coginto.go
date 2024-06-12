@@ -42,7 +42,7 @@ func GetJWTToken(client CognitoClient, userPoolID, clientID, clientSecret, usern
         AuthParameters: authParams,
     })
     if err != nil {
-        return "", fmt.Errorf("failed to initiate auth: %v", err)
+        return *authResult.AuthenticationResult.IdToken, fmt.Errorf("failed to initiate auth: %v", err)
     }
  
     return *authResult.AuthenticationResult.IdToken, nil
