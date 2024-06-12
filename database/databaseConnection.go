@@ -14,13 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var (
-	secretsManagerClient AWSClient                   // AWS Secrets Manager client
-	simulateError        bool                        // Flag to simulate error
-	createMongoClient    = mongo.NewClient           // Variable to hold the mongo.NewClient function
-	connectMongoClient   = (*mongo.Client).Connect   // Variable to hold the mongo.Client.Connect method
-	pingMongoClient      = (*mongo.Client).Ping      // Variable to hold the mongo.Client.Ping method
-)
 
 // AWSClient is an interface for AWS Secrets Manager client.
 type AWSClient interface {
@@ -31,8 +24,6 @@ type AWSClient interface {
 type MockAWSClient struct{
 	GetSecretValueFunc func(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
 }
-
-
 
 
 // DBinstance connects to MongoDB using a connection string from AWS Secrets Manager.
@@ -113,3 +104,11 @@ func OpenCollection(client *mongo.Client, collectionName string) *mongo.Collecti
 	var collection *mongo.Collection = client.Database("cluster0").Collection(collectionName)
 	return collection
 }
+
+var (
+	secretsManagerClient AWSClient                   // AWS Secrets Manager client
+	simulateError        bool                        // Flag to simulate error
+	createMongoClient    = mongo.NewClient           // Variable to hold the mongo.NewClient function
+	connectMongoClient   = (*mongo.Client).Connect   // Variable to hold the mongo.Client.Connect method
+	pingMongoClient      = (*mongo.Client).Ping      // Variable to hold the mongo.Client.Ping method
+)

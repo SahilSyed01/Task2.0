@@ -27,7 +27,7 @@ func main() {
     }
  
     // Load AWS configuration
-    cfg, err := config.LoadDefaultConfig(context.TODO())
+    cfg, err := config.LoadDefaultConfig(context.Background())
     if err != nil {
         log.Fatalf("failed to load AWS config: %v", err)
     }
