@@ -14,7 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-
 // AWSClient is an interface for AWS Secrets Manager client.
 type AWSClient interface {
 	GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)

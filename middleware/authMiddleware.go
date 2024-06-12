@@ -6,6 +6,7 @@ import (
     "fmt"
     "log"
     "net/http"
+    "os"
     "strings"
 
     "github.com/ShreerajShettyK/cognitoJwtAuthenticator"
@@ -31,9 +32,9 @@ func Authenticate(next http.Handler) http.Handler {
         }
         uiClientToken := authToken[1]
 
-        // Fetch secrets from Secrets Manager
-        region := "us-east-1" // Set your AWS region here
-        secretName := "myApp/mongo-db-credentials"
+        // Fetch secrets from environment variables
+        region := os.Getenv("REGION")
+        secretName := os.Getenv("SECRET")
         secretResult := getSecretvalue(region, secretName)
         if secretResult.Err != nil {
             log.Printf("Error fetching secret: %v", secretResult.Err)

@@ -3,15 +3,17 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"fmt"
-     "go-chat-app/middleware"
-	// "github.com/ShreerajShettyK/cognitoJwtAuthenticator"
-	"go.mongodb.org/mongo-driver/bson"
+
+	"go-chat-app/middleware"
 	"go-chat-app/models"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func Signup(w http.ResponseWriter, r *http.Request) {
@@ -20,12 +22,12 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 
-		// Fetch secrets from Secrets Manager
-		region := "us-east-1" // Set your AWS region here
-		secretName := "myApp/mongo-db-credentials"
-		secretResult,err := getSecret(region, secretName)
+		// Fetch secrets from environment variables
+		region := os.Getenv("REGION")
+		secretName := os.Getenv("SECRET")
+		secretResult, err := getSecret(region, secretName)
 		if err != nil {
-			log.Printf("Error fetching secret: %v",err)
+			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}

@@ -3,16 +3,16 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
-	// "strings"
 	"time"
-	"fmt"
 
-   "go.mongodb.org/mongo-driver/mongo"
-	"go-chat-app/middleware"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go-chat-app/middleware"
 )
 
 func GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -21,9 +21,9 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 
-		// Fetch secrets from Secrets Manager
-		region := "us-east-1" // Set your AWS region here
-		secretName := "myApp/mongo-db-credentials"
+		// Fetch secrets from environment variables
+		region := os.Getenv("REGION")
+		secretName := os.Getenv("SECRET")
 		secretResult, err := getSecret(region, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
