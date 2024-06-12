@@ -5,20 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	// "testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	// "github.com/stretchr/testify/assert"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
-	secretsManagerClient AWSClient  // AWS Secrets Manager client
-	simulateError        bool       // Flag to simulate error
+	secretsManagerClient AWSClient                   // AWS Secrets Manager client
+	simulateError        bool                        // Flag to simulate error
+	createMongoClient    = mongo.NewClient           // Variable to hold the mongo.NewClient function
+	connectMongoClient   = (*mongo.Client).Connect   // Variable to hold the mongo.Client.Connect method
+	pingMongoClient      = (*mongo.Client).Ping      // Variable to hold the mongo.Client.Ping method
 )
 
 // AWSClient is an interface for AWS Secrets Manager client.
@@ -27,17 +28,12 @@ type AWSClient interface {
 }
 
 // MockAWSClient is a mock implementation of the AWS Secrets Manager client.
-type MockAWSClient struct{}
-
-func (m *MockAWSClient) GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-	if simulateError {
-		return nil, fmt.Errorf("simulated error retrieving secret")
-	}
-	// Simulate successful retrieval of secret value
-	return &secretsmanager.GetSecretValueOutput{
-		SecretString: aws.String("invalid JSON"),
-	}, nil
+type MockAWSClient struct{
+	GetSecretValueFunc func(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
 }
+
+
+
 
 // DBinstance connects to MongoDB using a connection string from AWS Secrets Manager.
 func DBinstance() *mongo.Client {
@@ -82,21 +78,21 @@ func DBinstance() *mongo.Client {
 	}
 
 	// Create a new MongoDB client
-	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
+	client, err := createMongoClient(options.Client().ApplyURI(connectionString))
 	if err != nil {
 		log.Println("Error creating MongoDB client:", err)
 		return nil
 	}
 
 	// Connect to MongoDB
-	err = client.Connect(ctx)
+	err = connectMongoClient(client, ctx)
 	if err != nil {
 		log.Println("Error connecting to MongoDB:", err)
 		return nil
 	}
 
 	// Ping the MongoDB server to ensure connectivity
-	err = client.Ping(ctx, nil)
+	err = pingMongoClient(client, ctx, nil)
 	if err != nil {
 		log.Println("Error pinging MongoDB server:", err)
 		return nil

@@ -21,6 +21,7 @@ import (
     "go.mongodb.org/mongo-driver/bson/primitive"
     "go.mongodb.org/mongo-driver/mongo"
     "golang.org/x/crypto/bcrypt"
+	//  "go.mongodb.org/mongo-driver/mongo/options"
 )
  
 type JwtAuthenticator func(ctx context.Context, region, userPoolID, tokenString string) (interface{}, error)
@@ -216,14 +217,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 func GetUsers(w http.ResponseWriter, r *http.Request) {
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
- 
+
     // Extract the JWT token from the Authorization header
     authHeader := r.Header.Get("Authorization")
     if authHeader == "" {
         http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
         return
     }
- 
+
     // Split the header value to extract the token part
     authToken := strings.Split(authHeader, "Bearer ")
     if len(authToken) != 2 {
@@ -231,46 +232,53 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
         return
     }
     uiClientToken := authToken[1]
- 
+
     // Validate the JWT token
     ctx = context.Background()
     region := os.Getenv("REGION")
     userPoolID := os.Getenv("USER_POOL_ID")
     tokenString := uiClientToken
- 
+
     _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
     if err != nil {
         http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
         return
     }
- 
+
     // Token is valid, proceed with fetching users
     recordPerPage, err := strconv.Atoi(r.URL.Query().Get("recordPerPage"))
     if err != nil || recordPerPage < 1 {
         recordPerPage = 10 // Default value for recordPerPage
     }
- 
+
     page, err := strconv.Atoi(r.URL.Query().Get("page"))
     if err != nil || page < 1 {
         page = 1 // Default value for page
     }
- 
+
     startIndex := (page - 1) * recordPerPage
- 
+
     matchStage := bson.D{{"$match", bson.D{{}}}}
     groupStage := bson.D{{"$group", bson.D{
         {"_id", bson.D{{"_id", "null"}}},
         {"total_count", bson.D{{"$sum", 1}}},
-        {"data", bson.D{{"$push", "$$ROOT"}}},
+        {"data", bson.D{{"$push", bson.D{
+            {"email", "$email"},
+            {"first_name", "$first_name"},
+            {"last_name", "$last_name"},
+            {"password", "$password"},
+            {"phone", "$phone"},
+            {"user_id", "$user_id"},
+        }}}},
     }}}
     projectStage := bson.D{
         {"$project", bson.D{
-            {"_id", 0},
+            {"_id", 0}, // Exclude the _id field
             {"total_count", 1},
             {"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
         }},
     }
- 
+
     result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
         matchStage, groupStage, projectStage,
     })
@@ -278,33 +286,54 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "error occurred while listing user items", http.StatusInternalServerError)
         return
     }
- 
-    var allusers []bson.M
-    if err = result.All(ctx, &allusers); err != nil {
-        http.Error(w, "error occurred while decoding user items", http.StatusInternalServerError)
-        return
-    }
- 
-    if len(allusers) == 0 {
+
+    // Check if the response is empty
+    if !result.Next(ctx) {
         http.Error(w, "No users found", http.StatusNotFound)
         return
     }
- 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(allusers[0])
+
+    // Custom struct for the response
+    type UserResponse struct {
+        TotalCount int         `json:"total_count"`
+        UserItems  []bson.M    `json:"user_items"`
+    }
+
+    // Decode the response into a temporary variable
+    var tempResponse struct {
+        TotalCount int         `bson:"total_count"`
+        UserItems  []bson.M    `bson:"user_items"`
+    }
+    if err := result.Decode(&tempResponse); err != nil {
+        http.Error(w, fmt.Sprintf("error occurred while decoding user items: %v", err), http.StatusInternalServerError)
+        return
+    }
+
+    // Convert the temporary response into the final UserResponse struct
+    response := UserResponse{
+        TotalCount: tempResponse.TotalCount,
+        UserItems:  tempResponse.UserItems,
+    }
+
+    // Encode the custom response and send it
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(response); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 }
- 
+
 func GetUser(w http.ResponseWriter, r *http.Request) {
     var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
     defer cancel()
- 
+
     // Extract the JWT token from the Authorization header
     authHeader := r.Header.Get("Authorization")
     if authHeader == "" {
         http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
         return
     }
- 
+
     // Split the header value to extract the token part
     authToken := strings.Split(authHeader, "Bearer ")
     if len(authToken) != 2 {
@@ -312,22 +341,22 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
         return
     }
     uiClientToken := authToken[1]
- 
+
     // Validate the JWT token
     ctx = context.Background()
     region := os.Getenv("REGION")
     userPoolID := os.Getenv("USER_POOL_ID")
     tokenString := uiClientToken
- 
+
     _, err := cognitoJwtAuthenticator.ValidateToken(ctx, region, userPoolID, tokenString)
     if err != nil {
         http.Error(w, fmt.Sprintf("Token validation error: %s", err), http.StatusUnauthorized)
         return
     }
- 
+
     // Token is valid, proceed with fetching the user
     userID := r.URL.Path[len("/users/"):]
- 
+
     var user models.User
     err = userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
     if err != nil {
@@ -338,20 +367,34 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
     }
- 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(user)
+
+    // Define a custom response struct without the _id field
+    type UserResponse struct {
+        // ID        string `json:"ID"`
+        FirstName string `json:"first_name"`
+        LastName  string `json:"last_name"`
+        Password  string `json:"Password"`
+        Email     string `json:"email"`
+        Phone     string `json:"phone"`
+        UserID    string `json:"user_id"`
+    }
+
+    // Create a response object
+    response := UserResponse{
+        // ID:        user.User_id,
+        FirstName: *user.First_name,
+        LastName:  *user.Last_name,
+        Password:  *user.Password,
+        Email:     *user.Email,
+        Phone:     *user.Phone,
+        UserID:    user.User_id,
+    }
+
+    // Encode the response object into JSON and send it
+    w.Header().Set("Content-Type", "application/json")
+    if err := json.NewEncoder(w).Encode(response); err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 }
 
-func GetUserByID(userID string) (*models.User, error) {
-    var user models.User
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
- 
-    err := userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
-    if err != nil {
-        return nil, err
-    }
- 
-    return &user, nil
-}
