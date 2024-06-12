@@ -30,7 +30,7 @@ func GenerateToken(firstName string, userID string) (signedToken string, err err
     signedToken, err = accessToken.SignedString([]byte(SECRET_KEY))
     if err != nil {
         log.Println("Error generating access token:", err)
-        return "", err  // Here, return the error
+        return signedToken, err  // Here, return the error
     }
 
     return signedToken, nil  // Return the signed token
