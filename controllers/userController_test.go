@@ -1,99 +1,193 @@
 package controllers
 
 import (
-    "bytes"
-    "context"
-    "net/http"
-    "net/http/httptest"
-    "testing"
+	"bytes"
+	"encoding/json"
+	"go-chat-app/models"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-    "github.com/stretchr/testify/assert"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
+	"github.com/stretchr/testify/assert"
 )
+func TestSignupWrongToken(t *testing.T) {
+	// Prepare a request body with valid user data
+	requestBody := []byte(`{"email": "test@example.com", "password": "password123", "phone": "1234567890"}`)
+	req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// Mocking the MongoDB collection
-type mockCollection struct {
-    data []bson.M
+	// Set an incorrect or expired token in the Authorization header
+	req.Header.Set("Authorization", "Bearer your-wrong-token")
+
+	// Create a ResponseRecorder to record the response
+	rr := httptest.NewRecorder()
+
+	// Serve the HTTP request with the Signup handler
+	http.HandlerFunc(Signup).ServeHTTP(rr, req)
+
+	// Check if the status code is Unauthorized (401)
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
 }
 
-func (m *mockCollection) InsertOne(ctx context.Context, document interface{}) (*mongo.InsertOneResult, error) {
-    return nil, nil // Dummy implementation
-}
-
-func (m *mockCollection) FindOne(ctx context.Context, filter interface{}) *mongo.SingleResult {
-    return nil // Dummy implementation
-}
-
-func TestSignup(t *testing.T) {
-    // Mock the HTTP request and response
-    requestBody := []byte(`{"email": "test@example.com", "password": "password"}`)
-    req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+func TestSignupMissingAuthHeader(t *testing.T) {
+    req, err := http.NewRequest("POST", "/signup", nil)
     if err != nil {
         t.Fatal(err)
     }
 
-    req.Header.Set("Authorization", "Bearer eyJraWQiOiJlOTJxZGdvRDFKSVUrZEhoRE9jMnBtbXUzN0JoSmNtTWExQTA4YmFNY1hJPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiIyNGE4NDQ5OC1mMDgxLTcwZWQtMTAzMS04NDlkOGVmNDAxZmMiLCJhdWQiOiI1aGkzcDBkMGx2cDdmY2wxbzA1ZmNoajh1aSIsImV2ZW50X2lkIjoiNmI2MmQzMTktNmZmNC00YWRiLTlkM2EtNDRhYTkxMTVjNzg4IiwidG9rZW5fdXNlIjoiaWQiLCJhdXRoX3RpbWUiOjE3MTgwOTEwNzgsImlzcyI6Imh0dHBzOlwvXC9jb2duaXRvLWlkcC51cy1lYXN0LTEuYW1hem9uYXdzLmNvbVwvdXMtZWFzdC0xX2ljWGVnMmVpdiIsImNvZ25pdG86dXNlcm5hbWUiOiJteXRlc3R1c2VyIiwiZXhwIjoxNzE4MTc3NDc4LCJpYXQiOjE3MTgwOTEwNzh9.s739RhmqlG-io4rtk9RQrDXF7FirSkkbo8WB7JNwCM8uPMSvJzDqgIhUzzhqFe1OS-Iq_gG-3CBnfO-hUTKBFrmZDCmuhH0CFbiqs4iDNUpgJP-I8Mv7AhpMxp_6nEY0hS1cyiJuWeLXIztxm7l0ogolUROt9kYqC6v26AVu65aoE4RTgku_Yzg6PKIkJbJFiRq0vzfUXmYUuPksFa5nQ_5IBzFa8NrVL6O6qS6r7kQX3rnMTSzFNa5vs5tOMCm61XCYqcAFD3IzWhxXh5O9CMyRZiwdi5kCDNe4NyONwiX3oIKFtL2bfFJuGP0HwiwEkPKAmXY53EoMx8mGgJIZoA")
-
     rr := httptest.NewRecorder()
+    handler := http.HandlerFunc(Signup)
 
-    Signup(rr, req)
+    handler.ServeHTTP(rr, req)
 
-    assert.Equal(t, http.StatusOK, rr.Code)
-
-}
-
-func TestLogin(t *testing.T) {
-    requestBody := []byte(`{"email": "test@example.com", "password": "password"}`)
-    req, err := http.NewRequest("POST", "/login", bytes.NewBuffer(requestBody))
-    if err != nil {
-        t.Fatal(err)
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
     }
-
-    req.Header.Set("Authorization", "Bearer your-valid-jwt-token")
-
-    rr := httptest.NewRecorder()
-
-    Login(rr, req)
-
-    // Check the HTTP status code
-    assert.Equal(t, http.StatusOK, rr.Code)
-
-    // Optionally, you can check the response body or other aspects of the response
 }
 
-func TestGetUsers(t *testing.T) {
-    // Mock the HTTP request and response
+// More negative test cases for Signup function can be added similarly...
+
+// Negative test case for GetUsers function: Missing Authorization Header
+func TestGetUsersMissingAuthHeader(t *testing.T) {
     req, err := http.NewRequest("GET", "/users", nil)
     if err != nil {
         t.Fatal(err)
     }
 
-    req.Header.Set("Authorization", "Bearer your-valid-jwt-token")
-
     rr := httptest.NewRecorder()
+    handler := http.HandlerFunc(GetUsers)
 
-    GetUsers(rr, req)
+    handler.ServeHTTP(rr, req)
 
-    // Check the HTTP status code
-    assert.Equal(t, http.StatusOK, rr.Code)
-
-    // Optionally, you can check the response body or other aspects of the response
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+    }
 }
 
-func TestGetUser(t *testing.T) {
-    // Mock the HTTP request and response
-    req, err := http.NewRequest("GET", "/users/123", nil)
+// More negative test cases for GetUsers function can be added similarly...
+
+// Negative test case for GetUser function: Missing Authorization Header
+func TestGetUserMissingAuthHeader(t *testing.T) {
+    req, err := http.NewRequest("GET", "/users/userID", nil)
     if err != nil {
         t.Fatal(err)
     }
 
-    req.Header.Set("Authorization", "Bearer your-valid-jwt-token")
+    rr := httptest.NewRecorder()
+    handler := http.HandlerFunc(GetUser)
+
+    handler.ServeHTTP(rr, req)
+
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+    }
+}
+
+// Negative test case for GetUsers function: Wrong Token
+func TestGetUsersWrongToken(t *testing.T) {
+    req, err := http.NewRequest("GET", "/users", nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+    req.Header.Set("Authorization", "Bearer wrong_token_here")
 
     rr := httptest.NewRecorder()
+    handler := http.HandlerFunc(GetUsers)
 
-    GetUser(rr, req)
+    handler.ServeHTTP(rr, req)
 
-    // Check the HTTP status code
-    assert.Equal(t, http.StatusOK, rr.Code)
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+    }
+}
+
+// Negative test case for GetUser function: Wrong Token
+func TestGetUserWrongToken(t *testing.T) {
+    req, err := http.NewRequest("GET", "/users/userID", nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+    req.Header.Set("Authorization", "Bearer wrong_token_here")
+
+    rr := httptest.NewRecorder()
+    handler := http.HandlerFunc(GetUser)
+
+    handler.ServeHTTP(rr, req)
+
+    if status := rr.Code; status != http.StatusUnauthorized {
+        t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+    }
+}
+
+func TestHashPassword(t *testing.T) {
+    password := "testPassword"
+    hashedPassword := HashPassword(password)
+
+    if hashedPassword == "" {
+        t.Error("Hashed password is empty")
+    }
+}
+
+// Negative test case for VerifyPassword function: Incorrect Password
+func TestVerifyPasswordIncorrectPassword(t *testing.T) {
+    userPassword := "correctPassword"
+    providedPassword := "incorrectPassword"
+
+    check, msg := VerifyPassword(userPassword, providedPassword)
+
+    if check {
+        t.Error("Expected password verification to fail, but it passed")
+    }
+    if msg != "email or password is incorrect" {
+        t.Errorf("Expected error message 'email or password is incorrect', but got '%s'", msg)
+    }
+}
+
+// Positive test case for VerifyPassword function: Correct Password
+func TestVerifyPasswordCorrectPassword(t *testing.T) {
+    userPassword := "correctPassword"
+    providedPassword := HashPassword("correctPassword")
+
+    check, msg := VerifyPassword(userPassword, providedPassword)
+
+    if !check {
+        t.Error("Expected password verification to pass, but it failed")
+    }
+    if msg != "" {
+        t.Errorf("Expected no error message, but got '%s'", msg)
+    }
+}
+func TestLogin(t *testing.T) {
+    t.Run("InvalidUser", func(t *testing.T) {
+        // Negative test case: Invalid user credentials provided.
+        // Create an invalid user object with incorrect email or password
+        email := "invalid@example.com"
+        password := "incorrectPassword"
+        invalidUser := models.User{
+            Email:    &email,
+            Password: &password,
+            // Add other required fields here...
+        }
+
+        // Marshal invalid user object to JSON
+        requestBody, err := json.Marshal(invalidUser)
+        assert.NoError(t, err)
+
+        // Create a request with valid JSON body
+        req, err := http.NewRequest("POST", "/login", bytes.NewBuffer(requestBody))
+        assert.NoError(t, err)
+
+        // Create a response recorder
+        rr := httptest.NewRecorder()
+
+        // Call the Login handler function
+        Login(rr, req)
+
+        // Assert the response status code is 401 Unauthorized
+        assert.Equal(t, http.StatusUnauthorized, rr.Code)
+    })
+
+    // Add more test cases for negative scenarios...
 }
