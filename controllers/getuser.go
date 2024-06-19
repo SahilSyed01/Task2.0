@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"time"
-
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/bson"
 	"go-chat-app/middleware"
@@ -50,7 +49,6 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Define a custom response struct without the _id field
 		type UserResponse struct {
 			FirstName string `json:"first_name"`
 			LastName  string `json:"last_name"`
