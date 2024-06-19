@@ -10,6 +10,7 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/service/secretsmanager"
     "github.com/stretchr/testify/assert"
+    "go-chat-app/models"
 )
 
 // MockSecretsManagerClient is a mock of the SecretsManagerClient interface
@@ -29,9 +30,9 @@ func TestGetSecret(t *testing.T) {
     secretName := "testSecret"
     region := "us-west-2"
 
-    validSecret := &SecretsManagerSecret{
-        UserPoolID: aws.String("testPoolID"),
-        Region:     aws.String("us-west-2"),
+    validSecret := &models.SecretsManagerSecret{
+        UserPoolID: "testPoolID",
+        Region:     "us-west-2",
     }
     validSecretString, _ := json.Marshal(validSecret)
 
@@ -47,18 +48,18 @@ func TestGetSecret(t *testing.T) {
     }
 
     // Positive case: valid secret
-    secret, err := getSecret(region, secretName)
+    secret, err := GetSecret(region, secretName)
     assert.NoError(t, err)
     assert.NotNil(t, secret)
-    assert.Equal(t, "testPoolID", *secret.UserPoolID)
-    assert.Equal(t, "us-west-2", *secret.Region)
+    assert.Equal(t, "testPoolID", secret.UserPoolID)
+    assert.Equal(t, "us-west-2", secret.Region)
 
     // Negative case: secret retrieval error
     secretsManagerClient.(*MockSecretsManagerClient).GetSecretValueFunc = func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
         return nil, errors.New("some error")
     }
 
-    secret, err = getSecret(region, secretName)
+    secret, err = GetSecret(region, secretName)
     assert.Error(t, err)
     assert.Nil(t, secret)
     assert.IsType(t, SecretRetrievalError{}, err)
@@ -71,7 +72,7 @@ func TestGetSecret(t *testing.T) {
         }, nil
     }
 
-    secret, err = getSecret(region, secretName)
+    secret, err = GetSecret(region, secretName)
     assert.Error(t, err)
     assert.Nil(t, secret)
     assert.IsType(t, SecretRetrievalError{}, err)
@@ -84,7 +85,7 @@ func TestGetSecret(t *testing.T) {
         }, nil
     }
 
-    secret, err = getSecret(region, secretName)
+    secret, err = GetSecret(region, secretName)
     assert.Error(t, err)
     assert.Nil(t, secret)
     assert.Contains(t, err.Error(), "invalid character")

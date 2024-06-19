@@ -22,14 +22,14 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 		// Fetch secrets from Secrets Manager
 		region := os.Getenv("REGION")
 		secretName := os.Getenv("SECRET")
-		secretResult, err := getSecret(region, secretName)
+		secretResult, err := GetSecret(region, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		secret := secretResult
-		if secret == nil || secret.UserPoolID == nil || secret.Region == nil {
+		if secret == nil || secret.UserPoolID == "" || secret.Region == "" {
 			log.Println("Secret, UserPoolID, or Region is nil")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -49,22 +49,14 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		type UserResponse struct {
-			FirstName string `json:"first_name"`
-			LastName  string `json:"last_name"`
-			Password  string `json:"Password"`
-			Email     string `json:"email"`
-			Phone     string `json:"phone"`
-			UserID    string `json:"user_id"`
-		}
 
 		// Create a response object
-		response := UserResponse{
-			FirstName: *user.First_name,
-			LastName:  *user.Last_name,
-			Password:  *user.Password,
-			Email:     *user.Email,
-			Phone:     *user.Phone,
+		response := models.UserResponse{
+			FirstName: user.First_name,
+			LastName:  user.Last_name,
+			Password:  user.Password,
+			Email:     user.Email,
+			Phone:     user.Phone,
 			UserID:    user.User_id,
 		}
 

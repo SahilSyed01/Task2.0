@@ -7,6 +7,7 @@ import (
 
     "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+    "go-chat-app/models"
 )
 
 // SecretRetrievalError represents an error that occurred during secret retrieval.
@@ -33,7 +34,7 @@ func init() {
     secretsManagerClient = secretsmanager.NewFromConfig(cfg)
 }
 
-func getSecret(region, secretName string) (*SecretsManagerSecret, error) {
+func GetSecret(region, secretName string) (*models.SecretsManagerSecret, error) {
     input := &secretsmanager.GetSecretValueInput{
         SecretId: &secretName,
     }
@@ -47,7 +48,7 @@ func getSecret(region, secretName string) (*SecretsManagerSecret, error) {
         return nil, SecretRetrievalError{Message: "secret string is nil"}
     }
 
-    secret := &SecretsManagerSecret{}
+    secret := &models.SecretsManagerSecret{}
     err = json.Unmarshal([]byte(*result.SecretString), secret)
     if err != nil {
         return nil, err
@@ -56,8 +57,3 @@ func getSecret(region, secretName string) (*SecretsManagerSecret, error) {
     return secret, nil
 }
 
-type SecretsManagerSecret struct {
-    UserPoolID *string `json:"USER_POOL_ID"`
-    Region     *string `json:"REGION"`
-    // Add other fields from your secret here
-}

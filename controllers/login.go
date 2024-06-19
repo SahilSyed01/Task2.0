@@ -23,14 +23,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		// Fetch secrets from environment variables
 		region := os.Getenv("REGION")
 		secretName := os.Getenv("SECRET")
-		secretResult, err := getSecret(region, secretName)
+		secretResult, err := GetSecret(region, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		secret := secretResult
-		if secret == nil || secret.UserPoolID == nil || secret.Region == nil {
+		if secret == nil || secret.UserPoolID == "" || secret.Region == "" {
 			log.Println("Secret, UserPoolID, or Region is nil")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -50,14 +50,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
+		passwordIsValid, msg := VerifyPassword(user.Password, foundUser.Password)
 		if !passwordIsValid {
 			http.Error(w, msg, http.StatusUnauthorized)
 			return
 		}
 
 		// Generate token with First_name and UID
-		token, err := helpers.GenerateToken(*foundUser.First_name, foundUser.User_id)
+		token, err := helpers.GenerateToken(foundUser.First_name, foundUser.User_id)
 		if err != nil {
 			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 			return

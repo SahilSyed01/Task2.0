@@ -25,14 +25,14 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 		// Fetch secrets from environment variables
 		region := os.Getenv("REGION")
 		secretName := os.Getenv("SECRET")
-		secretResult, err := getSecret(region, secretName)
+		secretResult, err := GetSecret(region, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 		secret := secretResult
-		if secret == nil || secret.UserPoolID == nil || secret.Region == nil {
+		if secret == nil || secret.UserPoolID == "" || secret.Region == "" {
 			log.Println("Secret, UserPoolID, or Region is nil")
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -58,8 +58,8 @@ func Signup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		password := HashPassword(*user.Password)
-		user.Password = &password
+		password := HashPassword(user.Password)
+		user.Password = password
 
 		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
 		if err != nil {
