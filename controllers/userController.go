@@ -1,17 +1,15 @@
 package controllers
- 
-import (
-    "context"
-    "fmt"
-    "log"
-    "go-chat-app/database"
 
- 
-    "github.com/go-playground/validator/v10"
-   
-    "go.mongodb.org/mongo-driver/mongo"
-    "golang.org/x/crypto/bcrypt"
-   
+import (
+	"context"
+	"fmt"
+	"go-chat-app/database"
+	"log"
+
+	"github.com/go-playground/validator/v10"
+
+	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
  
 type JwtAuthenticator func(ctx context.Context, region, userPoolID, tokenString string) (interface{}, error)
