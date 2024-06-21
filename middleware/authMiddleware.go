@@ -3,7 +3,9 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"go-chat-app/models"
 	"log"
 	"net/http"
 	"os"
@@ -13,94 +15,129 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/smithy-go"
 )
+
 type SecretsManagerSecret struct {
 	UserPoolID string `json:"USER_POOL_ID"`
 	Region     string `json:"REGION"`
-	
 }
 
-func Authenticate(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract the JWT token from the Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
-			return
-		}
+func Authenticate(next http.Handler) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        // Extract the JWT token from the Authorization header
+        authHeader := r.Header.Get("Authorization")
+        if authHeader == "" {
+            http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+            return
+        }
 
-		// Split the header value to extract the token part
-		authToken := strings.Split(authHeader, "Bearer ")
-		if len(authToken) != 2 {
-			http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
-			return
-		}
-		uiClientToken := authToken[1]
+        // Split the header value to extract the token part
+        authToken := strings.Split(authHeader, "Bearer ")
+        if len(authToken) != 2 {
+            http.Error(w, "Invalid Authorization header format", http.StatusUnauthorized)
+            return
+        }
+        tokenString := authToken[1]
 
-		// Fetch secrets from environment variables
-		region := os.Getenv("REGION")
-		secretName := os.Getenv("SECRET")
-		secretResult, err := getSecretvalue(region, secretName)
-		if err != nil {
-			log.Printf("Error fetching secret: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		secret := secretResult.Secret
-		if secret == nil || secret.UserPoolID == "" || secret.Region == "" {
-			log.Println("Secret, UserPoolID, or Region is nil")
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
+        // Fetch secrets from environment variables
+        region := os.Getenv("REGION")
+        secretName := os.Getenv("SECRET")
 
-		// Validate the JWT token
-		ctx := context.Background()
-		tokenString := uiClientToken
+        // Get AWS config
+        cfg, err := config.LoadDefaultConfig(r.Context(), config.WithRegion(region))
+        if err != nil {
+            log.Printf("Failed to load AWS config: %v", err)
+            http.Error(w, "Failed to load AWS config", http.StatusInternalServerError)
+            return
+        }
 
-		_, err = cognitoJwtAuthenticator.ValidateToken(ctx, secret.Region, secret.UserPoolID, tokenString)
-		if err != nil {
-			log.Printf("Token validation error: %v", err)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+        // Create Secrets Manager service client
+        svc := secretsmanager.NewFromConfig(cfg)
 
-		// Token is valid, proceed with the request
-		next.ServeHTTP(w, r)
-	})
+        // Retrieve secret value
+        input := &secretsmanager.GetSecretValueInput{
+            SecretId: aws.String(secretName),
+        }
+        result, err := svc.GetSecretValue(r.Context(), input)
+        if err != nil {
+            var apiErr smithy.APIError
+            if errors.As(err, &apiErr) && apiErr.ErrorCode() == "ResourceNotFoundException" {
+                http.Error(w, "Secret not found", http.StatusNotFound)
+                return
+            }
+            log.Printf("Error fetching secret: %v", err)
+            http.Error(w, "Internal server error", http.StatusInternalServerError)
+            return
+        }
+
+        // Unmarshal secret string
+        secret := &SecretsManagerSecret{}
+        if err := json.Unmarshal([]byte(*result.SecretString), secret); err != nil {
+            log.Printf("Failed to unmarshal secret string: %v", err)
+            http.Error(w, "Failed to unmarshal secret", http.StatusInternalServerError)
+            return
+        }
+        // Validate the JWT token
+            _, err = cognitoJwtAuthenticator.ValidateToken(r.Context(), secret.Region, secret.UserPoolID, tokenString)
+                if err != nil {
+                    log.Printf("Token validation error: %v", err)
+                    http.Error(w, "Unauthorized", http.StatusUnauthorized) // Set HTTP status code to 401
+                    return
+                }
+
+        // Token is valid, proceed with the request
+        next.ServeHTTP(w, r)
+    }
 }
 
-type SecretResult struct {
-	Secret *SecretsManagerSecret
-	Err    error
+// SecretRetrievalError represents an error that occurred during secret retrieval.
+type SecretRetrievalError struct {
+    Message string
 }
 
-func getSecretvalue(region string, secretName string) (SecretResult, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
-	if err != nil {
-		return SecretResult{Err: err}, err
-	}
-
-	svc := secretsmanager.NewFromConfig(cfg)
-
-	input := &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretName),
-	}
-
-	result, err := svc.GetSecretValue(context.TODO(), input)
-	if err != nil {
-		return SecretResult{Err: err}, err
-	}
-
-	if result.SecretString == nil {
-		return SecretResult{Err: fmt.Errorf("secret string is nil")}, nil
-	}
-
-	secret := &SecretsManagerSecret{}
-	err = json.Unmarshal([]byte(*result.SecretString), secret)
-	if err != nil {
-		return SecretResult{Err: err}, err
-	}
-
-	return SecretResult{Secret: secret}, nil
+func (e SecretRetrievalError) Error() string {
+    return fmt.Sprintf("Secret retrieval error: %s", e.Message)
 }
+
+
+// SecretsManagerClient is an interface for Secrets Manager client methods
+type SecretsManagerClient interface {
+    GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+}
+
+var secretsManagerClient SecretsManagerClient
+
+func init() {
+    cfg, err := config.LoadDefaultConfig(context.Background())
+    if err != nil {
+        panic(fmt.Sprintf("unable to load SDK config, %v", err))
+    }
+    secretsManagerClient = secretsmanager.NewFromConfig(cfg)
+}
+
+func GetSecretValue(region, secretName string) (*models.SecretsManagerSecret, error) {
+    input := &secretsmanager.GetSecretValueInput{
+        SecretId: &secretName,
+    }
+
+    result, err := secretsManagerClient.GetSecretValue(context.Background(), input)
+    if err != nil {
+        return nil, SecretRetrievalError{Message: err.Error()}
+    }
+
+    if result.SecretString == nil {
+        return nil, SecretRetrievalError{Message: "secret string is nil"}
+    }
+
+    secret := &models.SecretsManagerSecret{}
+    err = json.Unmarshal([]byte(*result.SecretString), secret)
+    if err != nil {
+        return nil, err
+    }
+
+    return secret, nil
+}
+
+
 
