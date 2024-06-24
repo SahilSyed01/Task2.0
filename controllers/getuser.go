@@ -3,14 +3,21 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"go-chat-app/middleware"
+	"go-chat-app/models"
 	"log"
 	"net/http"
 	"os"
 	"time"
-	"go.mongodb.org/mongo-driver/mongo"
+
 	"go.mongodb.org/mongo-driver/bson"
-	"go-chat-app/middleware"
-	"go-chat-app/models"
+	"go.mongodb.org/mongo-driver/mongo"
+)
+
+var (
+	getSecret   = GetSecret
+	findOneUser = userCollection.FindOne
+	// userCollection.FindOne
 )
 
 func GetUser(w http.ResponseWriter, r *http.Request) {
@@ -20,9 +27,9 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		// Fetch secrets from Secrets Manager
-		region := os.Getenv("REGION")
+		// region := os.Getenv("REGION")
 		secretName := os.Getenv("SECRET")
-		secretResult, err := GetSecret(region, secretName)
+		secretResult, err := getSecret(secretsManagerClient, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -39,7 +46,7 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 		userID := r.URL.Path[len("/users/"):]
 
 		var user models.User
-		err = userCollection.FindOne(ctx, bson.M{"user_id": userID}).Decode(&user)
+		err = findOneUser(ctx, bson.M{"user_id": userID}).Decode(&user)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				http.Error(w, "User not found", http.StatusNotFound)
@@ -48,7 +55,6 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 
 		// Create a response object
 		response := models.UserResponse{

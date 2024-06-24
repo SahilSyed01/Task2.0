@@ -10,6 +10,9 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 )
+var (
+    computeSecretHash = ComputeSecretHash
+)
  
 // CognitoClient is an interface representing the methods from the CognitoIdentityProviderClient we need
 type CognitoClient interface {
@@ -17,7 +20,7 @@ type CognitoClient interface {
 }
  
 // computeSecretHash computes the secret hash for AWS Cognito
-func computeSecretHash(clientSecret, clientID, username string) string {
+func ComputeSecretHash(clientSecret, clientID, username string) string {
     h := hmac.New(sha256.New, []byte(clientSecret))
     h.Write([]byte(username + clientID))
     return base64.StdEncoding.EncodeToString(h.Sum(nil))

@@ -10,9 +10,14 @@ import (
 	"strconv"
 	"time"
 
+	"go-chat-app/middleware"
+
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go-chat-app/middleware"
+)
+
+var(
+	aggregate = userCollection.Aggregate
 )
 
 func GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -22,9 +27,9 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 
 		// Fetch secrets from environment variables
-		region := os.Getenv("REGION")
+		// region := os.Getenv("REGION")
 		secretName := os.Getenv("SECRET")
-		secretResult, err := GetSecret(region, secretName)
+		secretResult, err := GetSecret(secretsManagerClient, secretName)
 		if err != nil {
 			log.Printf("Error fetching secret: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -74,7 +79,7 @@ func GetUsers(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Aggregate pipeline execution
-		result, err := userCollection.Aggregate(ctx, mongo.Pipeline{
+		result, err := aggregate(ctx, mongo.Pipeline{
 			matchStage, groupStage, projectStage,
 		})
 		if err != nil {

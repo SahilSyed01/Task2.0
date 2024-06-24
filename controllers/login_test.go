@@ -1,171 +1,164 @@
 package controllers
 
-// import (
-// 	"bytes"
-// 	"context"
-// 	"encoding/json"
-// 	"errors"
-// 	"net/http"
-// 	"net/http/httptest"
-// 	"os"
-// 	"testing"
-// 	"time"
+import (
+	"bytes"
 
-// 	"go-chat-app/helpers"
-// 	"go-chat-app/models"
-// 	"go.mongodb.org/mongo-driver/bson"
-// 	"go.mongodb.org/mongo-driver/mongo"
-// )
+	// "encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 
-// // MockUserCollection mocks MongoDB collection for testing
-// type MockUserCollection struct {
-// 	users map[string]models.User
-// }
+	//"time"
 
-// // FindOne mocks the FindOne method of the MongoDB collection
-// func (m *MockUserCollection) FindOne(ctx context.Context, filter interface{}) *mongo.SingleResult {
-// 	email := filter.(bson.M)["email"].(string)
-// 	user, ok := m.users[email]
-// 	if !ok {
-// 		return mongo.NewSingleResultFromDocument(nil, errors.New("user not found"), nil)
-// 	}
-// 	return mongo.NewSingleResultFromDocument(user, nil, nil)
-// }
+	"go-chat-app/models"
 
-// func TestLogin(t *testing.T) {
-// 	// Set environment variables for testing
-// 	os.Setenv("REGION", "us-west-2")
-// 	os.Setenv("SECRET", "mySecret")
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	//"github.com/stretchr/testify/assert"
+)
 
-// 	// Mock secrets
-// 	GetSecret = func(region, secretName string) (*SecretResult, error) {
-// 		return &SecretResult{
-// 			UserPoolID: "us-west-2_testpool",
-// 			Region:     "us-west-2",
-// 		}, nil
-// 	}
+func TestLogin_Success(t *testing.T) {
+	t.Run("test for successful login", func(t *testing.T) {
+		requestBody := []byte(`{"email": "test@example.com", "password": "password123"}`)
+		req, err := http.NewRequest("POST", "/login", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type": {"application/json"},
+		}
 
-// 	// Mock user collection
-// 	mockCollection := &MockUserCollection{
-// 		users: map[string]models.User{
-// 			"test@example.com": {
-// 				Email:    "test@example.com",
-// 				Password: "hashedpassword", // Assume this is a hashed password
-// 				User_id:  "12345",
-// 				First_name: "Test",
-// 			},
-// 		},
-// 	}
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
 
-// 	// Mock password verification
-// 	VerifyPassword = func(password, hashedPassword string) (bool, string) {
-// 		if password == "password" && hashedPassword == "hashedpassword" {
-// 			return true, "Password is valid"
-// 		}
-// 		return false, "Invalid password"
-// 	}
+		// Mock dependencies
+		authenticate = func(next http.Handler) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				r.Header = http.Header{
+					"Content-Type":  {"application/json"},
+					"Authorization": {"Bearer asd.asd.asd"},
+				}
+			}
+		}
 
-// 	// Mock token generation
-// 	helpers.GenerateToken = func(firstName, userID string) (string, error) {
-// 		return "mocktoken", nil
-// 	}
+		generateToken = func(firstName, userID string) (string, error) {
+			return "test", nil
+		}
+		verifyPassword = func(userPassword, providedPassword string) (bool, string) {
+			return true, ""
+		}
+		getAWSConfig = func() (aws.Config, error) {
+			return aws.Config{
+				Region: "test",
+			}, nil
+		}
+		getSMClient = func(config aws.Config) *secretsmanager.Client {
+			return &secretsmanager.Client{}
+		}
+		getSecret = func(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
+			return &models.SecretsManagerSecret{
+				UserPoolID: "test",
+				Region:     "test",
+			}, nil
+		}
 
-// 	t.Run("Successful login", func(t *testing.T) {
-// 		requestBody, _ := json.Marshal(map[string]string{
-// 			"email":    "test@example.com",
-// 			"password": "password",
-// 		})
+		// Call the Login handler function directly
+		Login(rr, req)
 
-// 		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(requestBody))
-// 		rr := httptest.NewRecorder()
+		// Check the status code
+		if status := rr.Code; status != http.StatusOK {
+			t.Errorf("handler returned wrong status code: got %v want %v",
+				status, http.StatusOK)
+		}
 
-// 		// Run the Login function
-// 		Login(rr, req)
+		// Check the response body
+		expectedResponseBody := `{"Success":"True"}`
+		if rr.Body.String() != expectedResponseBody {
+			t.Errorf("handler returned unexpected body: got %v want %v",
+				rr.Body.String(), expectedResponseBody)
+		}
 
-// 		// Check the response status code
-// 		if status := rr.Code; status != http.StatusOK {
-// 			t.Errorf("handler returned wrong status code: got %v want %v",
-// 				status, http.StatusOK)
-// 		}
+		// Check the Authorization header
+		expectedToken := "Bearer mocked_token"
+		if rr.Header().Get("Authorization") != expectedToken {
+			t.Errorf("handler returned unexpected Authorization header: got %v want %v",
+				rr.Header().Get("Authorization"), expectedToken)
+		}
+	})
 
-// 		// Check the response body
-// 		expectedResponse := `{"Success":"True"}`
-// 		if body := rr.Body.String(); body != expectedResponse {
-// 			t.Errorf("handler returned unexpected body: got %v want %v",
-// 				body, expectedResponse)
-// 		}
-// 	})
+}
 
-// 	t.Run("Invalid email", func(t *testing.T) {
-// 		requestBody, _ := json.Marshal(map[string]string{
-// 			"email":    "invalid@example.com",
-// 			"password": "password",
-// 		})
+func TestLogin_BadRequestMissingBody(t *testing.T) {
+	req, err := http.NewRequest("POST", "/login", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// 		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(requestBody))
-// 		rr := httptest.NewRecorder()
+	// Create a ResponseRecorder to record the response
+	rr := httptest.NewRecorder()
 
-// 		// Run the Login function
-// 		Login(rr, req)
+	// Call the Login handler function directly
+	Login(rr, req)
 
-// 		// Check the response status code
-// 		if status := rr.Code; status != http.StatusUnauthorized {
-// 			t.Errorf("handler returned wrong status code: got %v want %v",
-// 				status, http.StatusUnauthorized)
-// 		}
+	// Check the status code
+	if status := rr.Code; status != http.StatusBadRequest {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusBadRequest)
+	}
+}
 
-// 		// Check the response body
-// 		expectedResponse := "email or password is incorrect"
-// 		if body := rr.Body.String(); body != expectedResponse {
-// 			t.Errorf("handler returned unexpected body: got %v want %v",
-// 				body, expectedResponse)
-// 		}
-// 	})
+func TestLogin_UnauthorizedIncorrectCredentials(t *testing.T) {
+	// Prepare a request body with incorrect credentials
+	requestBody := []byte(`{"email": "test@example.com", "password": "wrongpassword"}`)
+	req, err := http.NewRequest("POST", "/login", bytes.NewBuffer(requestBody))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// 	t.Run("Invalid password", func(t *testing.T) {
-// 		requestBody, _ := json.Marshal(map[string]string{
-// 			"email":    "test@example.com",
-// 			"password": "wrongpassword",
-// 		})
+	// Create a ResponseRecorder to record the response
+	rr := httptest.NewRecorder()
 
-// 		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(requestBody))
-// 		rr := httptest.NewRecorder()
+	// Mock dependencies
+	authenticate = func(next http.Handler) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {}
+	}
+	verifyPassword = func(userPassword, providedPassword string) (bool, string) {
+		return false, ""
+	}
+	getAWSConfig = func() (aws.Config, error) {
+		return aws.Config{
+			Region: "test",
+		}, nil
+	}
+	getSMClient = func(config aws.Config) *secretsmanager.Client {
+		return &secretsmanager.Client{}
+	}
+	getSecret = func(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
+		return &models.SecretsManagerSecret{
+			UserPoolID:   "test",
+			ClientID:     "test",
+			ClientSecret: "test",
+			Username:     "test",
+			Password:     "test",
+			Region:       "test",
+		}, nil
+	}
 
-// 		// Run the Login function
-// 		Login(rr, req)
+	// Call the Login handler function directly
+	Login(rr, req)
 
-// 		// Check the response status code
-// 		if status := rr.Code; status != http.StatusUnauthorized {
-// 			t.Errorf("handler returned wrong status code: got %v want %v",
-// 				status, http.StatusUnauthorized)
-// 		}
+	// Check the status code
+	if status := rr.Code; status != http.StatusUnauthorized {
+		t.Errorf("handler returned wrong status code: got %v want %v",
+			status, http.StatusUnauthorized)
+	}
 
-// 		// Check the response body
-// 		expectedResponse := "Invalid password"
-// 		if body := rr.Body.String(); body != expectedResponse {
-// 			t.Errorf("handler returned unexpected body: got %v want %v",
-// 				body, expectedResponse)
-// 		}
-// 	})
+	// Check the response body
+	expectedResponseBody := "email or password is incorrect\n"
+	if rr.Body.String() != expectedResponseBody {
+		t.Errorf("handler returned unexpected body: got %v want %v",
+			rr.Body.String(), expectedResponseBody)
+	}
+}
 
-// 	t.Run("Bad request body", func(t *testing.T) {
-// 		req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBuffer(nil))
-// 		rr := httptest.NewRecorder()
-
-// 		// Run the Login function
-// 		Login(rr, req)
-
-// 		// Check the response status code
-// 		if status := rr.Code; status != http.StatusBadRequest {
-// 			t.Errorf("handler returned wrong status code: got %v want %v",
-// 				status, http.StatusBadRequest)
-// 		}
-
-// 		// Check the response body
-// 		expectedResponse := "EOF"
-// 		if body := rr.Body.String(); body != expectedResponse {
-// 			t.Errorf("handler returned unexpected body: got %v want %v",
-// 				body, expectedResponse)
-// 		}
-// 	})
-// }
+// Mocks for dependencies
