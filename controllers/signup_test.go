@@ -1,136 +1,679 @@
 package controllers
 
-// import (
-//     "bytes"
-//     "context"
-//     "encoding/json"
-//     "net/http"
-//     "net/http/httptest"
-//     "testing"
-//     "time"
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
 
-//     "go-chat-app/models"
+	"go-chat-app/models"
 
-//     "github.com/stretchr/testify/assert"
-// )
+	"github.com/aws/aws-sdk-go-v2/aws"
+	//"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	//"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
 
-// func TestSignup_Success(t *testing.T) {
-//     // Prepare a request body
-//     requestBody := []byte(`{"email": "test@example.com", "password": "password123", "phone": "1234567890"}`)
-//     req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
-//     if err != nil {
-//         t.Fatal(err)
-//     }
+// Mock functions
+func MockHashPassword(password string) string {
+	return password // Mock hash function returns the same password
+}
 
-//     // Create a ResponseRecorder to record the response
-//     rr := httptest.NewRecorder()
+func MockInsertOneUser(ctx context.Context, document interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
+	return &mongo.InsertOneResult{}, nil // Mock successful insertion
+}
 
-//     // Mock dependencies
-//     authenticate = MockAuthenticate
-//     getAWSConfig = MockGetAWSConfig
-//     getSMClient = MockGetSMClient
-//     GetSecret = MockGetSecret
-//     countDocs = MockCountDocs
-//     hashPassword = MockHashPassword
-//     insertOneUser = MockInsertOneUser
+func MockCountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+	return 0, nil // Mock count documents returns no existing documents
+}
 
-//     // Call the Signup handler function directly
-//     Signup(rr, req)
+// MockGetSecret1 mocks the function to retrieve secrets from AWS Secrets Manager.
+func MockGetSecret1(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
+	return &models.SecretsManagerSecret{
+		UserPoolID: "test",
+		Region:     "test",
+	}, nil
+}
 
-//     // Check the status code
-//     if status := rr.Code; status != http.StatusOK {
-//         t.Errorf("handler returned wrong status code: got %v want %v",
-//             status, http.StatusOK)
-//     }
+func MockGetSecretFailure1(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
+	return nil, errors.New("simulated secret retrieval failure")
+}
 
-//     // Check the response body if needed (depends on your implementation)
-//     // For example, you might decode and verify the response JSON:
-//     var response map[string]interface{}
-//     if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-//         t.Errorf("error decoding JSON response: %v", err)
-//     }
+func MockGetAWSConfig1() (aws.Config, error) {
+	return aws.Config{
+		Region: "test",
+	}, nil
+}
 
-//     // Assert expected response if needed
-//     // Example: assert.Equal(t, expectedResponse, response)
+// MockAuthenticate mocks the authentication middleware
+func MockAuthenticate1(next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Mock token validation or authorization logic
+		// Example: Check if the request has a valid Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		// Example: Simulate valid token scenario
+		// You can customize this based on your token validation logic
+		if authHeader != "Bearer dummytoken" {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		// Proceed with the request if token is valid
+		next.ServeHTTP(w, r)
+	}
+}
+
+func TestSignup_Success(t *testing.T) {
+	t.Run("test for successful signup", func(t *testing.T) {
+		// Create a sample user request body with required fields
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
+
+		// Create a request
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+		}
+
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		// Call the Signup handler function directly
+		Signup(rr, req)
+
+		// Check the status code
+		if status := rr.Code; status != http.StatusOK {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
+		}
+
+		// Optionally, check the response body or headers if needed
+	})
+}
+
+func TestSignup_MissingAuthorization(t *testing.T) {
+	t.Run("test for missing authorization header", func(t *testing.T) {
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
+
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		Signup(rr, req)
+
+		if status := rr.Code; status != http.StatusUnauthorized {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+		}
+	})
+}
+
+func TestSignup_InvalidAuthorization(t *testing.T) {
+	t.Run("test for invalid authorization header", func(t *testing.T) {
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
+
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer invalidtoken"},
+		}
+
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		Signup(rr, req)
+
+		if status := rr.Code; status != http.StatusUnauthorized {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
+		}
+	})
+}
+func MockCountDocumentsDuplicate(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+	return 1, nil // Mock count documents returns an existing document
+}
+
+// func TestSignup_DuplicateUser(t *testing.T) {
+// 	t.Run("test for duplicate user", func(t *testing.T) {
+// 		user := models.User{
+// 			ID:         primitive.NewObjectID(),
+// 			First_name: "John",
+// 			Last_name:  "Doe",
+// 			Password:   "password123",
+// 			Email:      "test@example.com",
+// 			Phone:      "1234567890",
+// 			User_id:    primitive.NewObjectID().Hex(),
+// 		}
+// 		requestBody, _ := json.Marshal(user)
+
+// 		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+// 		if err != nil {
+// 			t.Fatal(err)
+// 		}
+// 		req.Header = http.Header{
+// 			"Content-Type":  {"application/json"},
+// 			"Authorization": {"Bearer dummytoken"},
+// 		}
+
+// 		rr := httptest.NewRecorder()
+
+// 		// Mock dependencies
+// 		hashPassword = MockHashPassword
+// 		insertOneUser = MockInsertOneUser
+// 		countDocs = MockCountDocumentsDuplicate
+// 		getAWSConfig = MockGetAWSConfig1
+// 		getSMClient = MockGetSMClient
+// 		getSecret = MockGetSecret1
+// 		authenticate = MockAuthenticate1
+
+// 		Signup(rr, req)
+
+// 		if status := rr.Code; status != http.StatusConflict {
+// 			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusConflict)
+// 		}
+// 	})
 // }
 
-// func TestSignup_BadRequestInvalidData(t *testing.T) {
-//     // Prepare a request body with invalid data (missing required fields, etc.)
-//     requestBody := []byte(`{"email": "test@example.com"}`)
-//     req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
-//     if err != nil {
-//         t.Fatal(err)
-//     }
+func TestSignup_SecretRetrievalFailure(t *testing.T) {
+	t.Run("test for secret retrieval failure", func(t *testing.T) {
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
 
-//     // Create a ResponseRecorder to record the response
-//     rr := httptest.NewRecorder()
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"},
+		}
 
-//     // Mock dependencies
-//     authenticate = MockAuthenticate
-//     getAWSConfig = MockGetAWSConfig
-//     getSMClient = MockGetSMClient
-//     GetSecret = MockGetSecret
-//     countDocs = MockCountDocs
-//     hashPassword = MockHashPassword
-//     insertOneUser = MockInsertOneUser
+		rr := httptest.NewRecorder()
 
-//     // Call the Signup handler function directly
-//     Signup(rr, req)
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecretFailure1
+		authenticate = MockAuthenticate1
 
-//     // Check the status code
-//     if status := rr.Code; status != http.StatusBadRequest {
-//         t.Errorf("handler returned wrong status code: got %v want %v",
-//             status, http.StatusBadRequest)
-//     }
+		Signup(rr, req)
 
-//     // Check the response body if needed
-//     // Example: assert.Contains(t, rr.Body.String(), "validation error message")
-// }
+		if status := rr.Code; status != http.StatusInternalServerError {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+		}
+	})
+}
+func MockInsertOneUserFailure(ctx context.Context, document interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
+	return nil, errors.New("simulated insertion failure")
+}
+func TestSignup_InsertionFailure(t *testing.T) {
+	t.Run("test for insertion failure", func(t *testing.T) {
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
 
-// // Mocks for dependencies
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"},
+		}
 
-// func MockAuthenticate(next http.Handler) http.Handler {
-//     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//         // Simulate authentication middleware behavior
-//         // For simplicity, let's assume authentication always succeeds.
-//         ctx := context.WithValue(r.Context(), "authenticated", true)
-//         next.ServeHTTP(w, r.WithContext(ctx))
-//     })
-// }
+		rr := httptest.NewRecorder()
 
-// func MockGetAWSConfig() (string, error) {
-//     // Simple mock AWS configuration retrieval
-//     return "mocked_aws_config", nil
-// }
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUserFailure
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1
 
-// func MockGetSMClient(awsConfig string) interface{} {
-//     // Simple mock Secrets Manager client
-//     return nil // Replace with appropriate mock behavior if needed
-// }
+		Signup(rr, req)
 
-// func MockGetSecret(smClient interface{}, secretName string) (*models.Secret, error) {
-//     // Simple mock secret retrieval
-//     return &models.Secret{
-//         UserPoolID: "mock_user_pool_id",
-//         Region:     "mock_region",
-//     }, nil
-// }
+		if status := rr.Code; status != http.StatusInternalServerError {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+		}
+	})
+}
 
-// func MockCountDocs(ctx context.Context, filter interface{}) (int64, error) {
-//     // Mock count documents function
-//     // Return a predefined count for testing scenarios
-//     return 0, nil // Replace with appropriate mock behavior
-// }
+func MockGetAWSConfigFailure1() (aws.Config, error) {
+	return aws.Config{}, errors.New("simulated AWS config retrieval failure")
+}
 
-// func MockHashPassword(password string) string {
-//     // Simple mock hash password function
-//     return "mocked_hashed_password"
-// }
+func TestSignup_AWSConfigFailure1(t *testing.T) {
+	t.Run("test for AWS config failure", func(t *testing.T) {
+		// Create a sample user request body
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
 
-// func MockInsertOneUser(ctx context.Context, document interface{}) (*models.InsertOneResult, error) {
-//     // Mock insert one user function
-//     // Return a predefined result for testing scenarios
-//     return &models.InsertOneResult{
-//         InsertedID: "mocked_inserted_id",
-//     }, nil
-// }
+		// Create a request
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+		}
+
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfigFailure
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		// Call the Signup handler function directly
+		Signup(rr, req)
+
+		// Check the status code
+		if status := rr.Code; status != http.StatusInternalServerError {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestSignup_InvalidJSON(t *testing.T) {
+	t.Run("test for invalid JSON", func(t *testing.T) {
+		// Create an invalid JSON request body
+		invalidJSON := `{"email": "test@example.com", "password": "password123", "phone": "1234567890"` // Missing closing bracket
+
+		// Create a request
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBufferString(invalidJSON))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+		}
+
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		// Call the Signup handler function directly
+		Signup(rr, req)
+
+		// Check the status code
+		if status := rr.Code; status != http.StatusBadRequest {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
+		}
+	})
+}
+
+func TestSignup_ValidationErrors(t *testing.T) {
+	t.Run("test for validation errors", func(t *testing.T) {
+		// Create a user request body with invalid fields
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "", // Missing first name
+			Last_name:  "Doe",
+			Password:   "123",           // Password too short
+			Email:      "invalid-email", // Invalid email format
+			Phone:      "",              // Missing phone number
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
+
+		// Create a request
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+		}
+
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocuments
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		// Call the Signup handler function directly
+		Signup(rr, req)
+
+		// Check the status code
+		if status := rr.Code; status != http.StatusBadRequest {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
+		}
+	})
+}
+
+func MockCountDocumentsFailure(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+	return 0, errors.New("simulated count documents failure")
+}
+
+func TestSignup_CountDocumentsEmailFailure(t *testing.T) {
+	t.Run("test for count documents email failure", func(t *testing.T) {
+		// Create a sample user request body
+		user := models.User{
+			ID:         primitive.NewObjectID(),
+			First_name: "John",
+			Last_name:  "Doe",
+			Password:   "password123",
+			Email:      "test@example.com",
+			Phone:      "1234567890",
+			User_id:    primitive.NewObjectID().Hex(),
+		}
+		requestBody, _ := json.Marshal(user)
+
+		// Create a request
+		req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header = http.Header{
+			"Content-Type":  {"application/json"},
+			"Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+		}
+
+		// Create a ResponseRecorder to record the response
+		rr := httptest.NewRecorder()
+
+		// Mock dependencies
+		hashPassword = MockHashPassword
+		insertOneUser = MockInsertOneUser
+		countDocs = MockCountDocumentsFailure // Simulate failure in counting documents by email
+		getAWSConfig = MockGetAWSConfig1
+		getSMClient = MockGetSMClient
+		getSecret = MockGetSecret1
+		authenticate = MockAuthenticate1 // Use the mock token validation function
+
+		// Call the Signup handler function directly
+		Signup(rr, req)
+
+		// Check the status code
+		if status := rr.Code; status != http.StatusInternalServerError {
+			t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+		}
+	})
+}
+
+
+func TestSignup_SecretIncomplete(t *testing.T) {
+    t.Run("test for secret incomplete", func(t *testing.T) {
+        // Create a sample user request body with required fields
+        user := models.User{
+            ID:         primitive.NewObjectID(),
+            First_name: "John",
+            Last_name:  "Doe",
+            Password:   "password123",
+            Email:      "test@example.com",
+            Phone:      "1234567890",
+            User_id:    primitive.NewObjectID().Hex(),
+        }
+        requestBody, _ := json.Marshal(user)
+
+        // Create a request
+        req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+        if err != nil {
+            t.Fatal(err)
+        }
+        req.Header = http.Header{
+            "Content-Type":  {"application/json"},
+            "Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+        }
+
+        // Mock dependencies
+        hashPassword = MockHashPassword
+        insertOneUser = MockInsertOneUser
+        countDocs = MockCountDocuments
+        getAWSConfig = MockGetAWSConfig1
+        getSMClient = MockGetSMClient
+        getSecret = func(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
+            // Simulate fetching a secret that is incomplete or nil
+            return nil, nil // Mock returning nil secret
+        }
+        authenticate = MockAuthenticate1 // Use the mock token validation function
+
+        defer func() {
+            // Restore original functions after the test
+            getSecret = MockGetSecret1
+            authenticate = MockAuthenticate1
+        }()
+
+        // Create a ResponseRecorder to record the response
+        rr := httptest.NewRecorder()
+
+        // Call the Signup handler function directly
+        Signup(rr, req)
+
+        // Check the status code
+        if status := rr.Code; status != http.StatusInternalServerError {
+            t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+        }
+
+        // Optionally, check the response body or logs if needed
+        // For example, you could check the response body contains "Internal server error"
+        responseBody, err := ioutil.ReadAll(rr.Body)
+        if err != nil {
+            t.Fatal(err)
+        }
+        expectedErrorMessage := "Internal server error"
+        if !strings.Contains(string(responseBody), expectedErrorMessage) {
+            t.Errorf("expected error message '%s' not found in response body: %s", expectedErrorMessage, responseBody)
+        }
+    })
+}
+
+func TestSignup_CountDocumentsPhoneError(t *testing.T) {
+    t.Run("test for error counting documents for phone number", func(t *testing.T) {
+        // Create a sample user request body with required fields
+        user := models.User{
+            ID:         primitive.NewObjectID(),
+            First_name: "John",
+            Last_name:  "Doe",
+            Password:   "password123",
+            Email:      "test@example.com",
+            Phone:      "123456890",
+            User_id:    primitive.NewObjectID().Hex(),
+        }
+        requestBody, _ := json.Marshal(user)
+
+        // Create a request
+        req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+        if err != nil {
+            t.Fatal(err)
+        }
+        req.Header = http.Header{
+            "Content-Type":  {"application/json"},
+            "Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+        }
+
+        // Create a ResponseRecorder to record the response
+        rr := httptest.NewRecorder()
+
+        // Mock dependencies
+        hashPassword = MockHashPassword
+        insertOneUser = MockInsertOneUser
+        countDocs = func(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+            return 0, errors.New("simulated count documents failure")
+        }
+        getAWSConfig = MockGetAWSConfig1
+        getSMClient = MockGetSMClient
+        getSecret = MockGetSecret1
+        authenticate = MockAuthenticate1 // Use the mock token validation function
+
+        // Call the Signup handler function directly
+        Signup(rr, req)
+
+        // Check the status code
+        if status := rr.Code; status != http.StatusInternalServerError {
+            t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusInternalServerError)
+        }
+
+        // Check the response body for the expected error message
+        expectedError := "error occurred while checking for the phone number"
+        if !strings.Contains(rr.Body.String(), expectedError) {
+            t.Errorf("expected error message '%s' not found in response body: %s", expectedError, rr.Body.String())
+        }
+    })
+}
+
+
+func TestSignup_PhoneNumberAlreadyExists(t *testing.T) {
+    t.Run("test for existing phone number", func(t *testing.T) {
+        // Create a sample user request body with required fields
+        user := models.User{
+            ID:         primitive.NewObjectID(),
+            First_name: "John",
+            Last_name:  "Doe",
+            Password:   "password123",
+            Email:      "test@example.com",
+            Phone:      "1234567890",
+            User_id:    primitive.NewObjectID().Hex(),
+        }
+        requestBody, _ := json.Marshal(user)
+
+        // Create a request
+        req, err := http.NewRequest("POST", "/signup", bytes.NewBuffer(requestBody))
+        if err != nil {
+            t.Fatal(err)
+        }
+        req.Header = http.Header{
+            "Content-Type":  {"application/json"},
+            "Authorization": {"Bearer dummytoken"}, // Mocking the Authorization header with a dummy token
+        }
+
+        // Create a ResponseRecorder to record the response
+        rr := httptest.NewRecorder()
+
+        // Mock dependencies
+        hashPassword = MockHashPassword
+        insertOneUser = MockInsertOneUser
+        countDocs = func(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+            return 1, nil // Simulate that the phone number already exists
+        }
+        getAWSConfig = MockGetAWSConfig1
+        getSMClient = MockGetSMClient
+        getSecret = MockGetSecret1
+        authenticate = MockAuthenticate1 // Use the mock token validation function
+
+        // Call the Signup handler function directly
+        Signup(rr, req)
+
+        // Check the status code
+        if status := rr.Code; status != http.StatusBadRequest {
+            t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
+        }
+
+        // Check the response body for the expected error message
+        expectedError := "this phone number already exists"
+        if !strings.Contains(rr.Body.String(), expectedError) {
+            t.Errorf("expected error message '%s' not found in response body: %s", expectedError, rr.Body.String())
+        }
+    })
+}
+

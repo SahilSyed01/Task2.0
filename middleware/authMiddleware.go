@@ -24,7 +24,7 @@ type SecretsManagerSecret struct {
 }
 
 func Authenticate(next http.Handler) http.HandlerFunc {
-	log.Println("insise auth func")
+	//log.Println("insise auth func")
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract the JWT token from the Authorization header
 		authHeader := r.Header.Get("Authorization")

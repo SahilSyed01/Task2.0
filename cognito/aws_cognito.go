@@ -10,6 +10,7 @@ import (
     "github.com/aws/aws-sdk-go-v2/aws"
     "github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 )
+ 
 var (
     computeSecretHash = ComputeSecretHash
 )
@@ -19,7 +20,7 @@ type CognitoClient interface {
     InitiateAuth(ctx context.Context, params *cognitoidentityprovider.InitiateAuthInput, optFns ...func(*cognitoidentityprovider.Options)) (*cognitoidentityprovider.InitiateAuthOutput, error)
 }
  
-// computeSecretHash computes the secret hash for AWS Cognito
+// ComputeSecretHash computes the secret hash for AWS Cognito
 func ComputeSecretHash(clientSecret, clientID, username string) string {
     h := hmac.New(sha256.New, []byte(clientSecret))
     h.Write([]byte(username + clientID))
@@ -45,7 +46,11 @@ func GetJWTToken(client CognitoClient, userPoolID, clientID, clientSecret, usern
         AuthParameters: authParams,
     })
     if err != nil {
-        return *authResult.AuthenticationResult.IdToken, fmt.Errorf("failed to initiate auth: %v", err)
+        return "", fmt.Errorf("failed to initiate auth: %v", err)
+    }
+ 
+    if authResult.AuthenticationResult == nil {
+        return "", fmt.Errorf("authentication result is nil")
     }
  
     return *authResult.AuthenticationResult.IdToken, nil

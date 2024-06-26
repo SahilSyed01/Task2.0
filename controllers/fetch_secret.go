@@ -7,6 +7,7 @@ import (
 
 	"go-chat-app/models"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
@@ -26,13 +27,13 @@ type SecretsManagerClient interface {
 
 var secretsManagerClient SecretsManagerClient
 
-// func init() {
-//     cfg, err := config.LoadDefaultConfig(context.Background())
-//     if err != nil {
-//         panic(fmt.Sprintf("unable to load SDK config, %v", err))
-//     }
-//     secretsManagerClient = secretsmanager.NewFromConfig(cfg)
-// }
+func init() {
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		panic(fmt.Sprintf("unable to load SDK config, %v", err))
+	}
+	secretsManagerClient = secretsmanager.NewFromConfig(cfg)
+}
 
 func GetSecret(client SecretsManagerClient, secretName string) (*models.SecretsManagerSecret, error) {
 	result, err := client.GetSecretValue(context.Background(), &secretsmanager.GetSecretValueInput{

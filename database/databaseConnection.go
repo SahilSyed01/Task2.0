@@ -21,34 +21,9 @@ var (
 	connectMongoClient   = (*mongo.Client).Connect   // Variable to hold the mongo.Client.Connect method
 	pingMongoClient      = (*mongo.Client).Ping      // Variable to hold the mongo.Client.Ping method
 )
-type MockCollection struct {
-    // Add fields as needed for mock implementation
-}
-
-func (c *MockCollection) FindOne(ctx context.Context, filter interface{}, opts ...*options.FindOneOptions) *mongo.SingleResult {
-    // Implement mock FindOne logic
-    return nil
-}
-
-func (c *MockCollection) InsertOne(ctx context.Context, document interface{}, opts ...*options.InsertOneOptions) (*mongo.InsertOneResult, error) {
-    // Implement mock InsertOne logic
-    return nil, nil
-}
-
-// NewMockCollection creates a new instance of MockCollection
-func NewMockCollection() *MockCollection {
-    return &MockCollection{}
-}
-// AWSClient is an interface for AWS Secrets Manager client.
 type AWSClient interface {
 	GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
 }
-
-// MockAWSClient is a mock implementation of the AWS Secrets Manager client.
-type MockAWSClient struct{
-	GetSecretValueFunc func(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
-}
-
 
 // DBinstance connects to MongoDB using a connection string from AWS Secrets Manager.
 func DBinstance() *mongo.Client {

@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"go-chat-app/middleware"
 	"go-chat-app/models"
 	"log"
 	"net/http"
@@ -22,7 +21,7 @@ var (
 
 func GetUser(w http.ResponseWriter, r *http.Request) {
 	// Extract the JWT token and validate it using the middleware
-	middleware.Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 

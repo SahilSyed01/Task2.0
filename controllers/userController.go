@@ -15,7 +15,7 @@ import (
 type JwtAuthenticator func(ctx context.Context, region, userPoolID, tokenString string) (interface{}, error)
  
 // MockValidateToken is a mock implementation of JwtAuthenticator for testing
-var MockValidateToken JwtAuthenticator
+//var MockValidateToken JwtAuthenticator
  
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 var validate = validator.New()
