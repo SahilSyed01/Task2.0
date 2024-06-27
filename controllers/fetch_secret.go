@@ -10,7 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
-
+var(
+	load=config.LoadDefaultConfig
+)
 // SecretRetrievalError represents an error that occurred during secret retrieval.
 type SecretRetrievalError struct {
 	Message string
@@ -28,9 +30,9 @@ type SecretsManagerClient interface {
 var secretsManagerClient SecretsManagerClient
 
 func init() {
-	cfg, err := config.LoadDefaultConfig(context.Background())
+	cfg, err := load(context.Background())
 	if err != nil {
-		panic(fmt.Sprintf("unable to load SDK config, %v", err))
+		fmt.Sprintf("unable to load SDK config, %v", err)
 	}
 	secretsManagerClient = secretsmanager.NewFromConfig(cfg)
 }

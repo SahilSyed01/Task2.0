@@ -23,6 +23,10 @@ type SecretsManagerSecret struct {
 	Region     string `json:"REGION"`
 }
 
+var (
+	cognitovalidate = cognitoJwtAuthenticator.ValidateToken
+)
+
 func Authenticate(next http.Handler) http.HandlerFunc {
 	//log.Println("insise auth func")
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +85,7 @@ func Authenticate(next http.Handler) http.HandlerFunc {
 			return
 		}
 		// Validate the JWT token
-		_, err = cognitoJwtAuthenticator.ValidateToken(r.Context(), secret.Region, secret.UserPoolID, tokenString)
+		_, err = cognitovalidate(r.Context(), secret.Region, secret.UserPoolID, tokenString)
 		if err != nil {
 			log.Printf("Token validation error: %v", err)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized) // Set HTTP status code to 401

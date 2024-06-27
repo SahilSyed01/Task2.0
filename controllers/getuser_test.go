@@ -131,4 +131,3 @@ func TestGetUser_SecretValuesNil(t *testing.T) {
             rr.Body.String(), expectedResponseBody)
     }
 }
- 
