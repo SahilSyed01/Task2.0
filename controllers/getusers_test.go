@@ -47,7 +47,6 @@ func MockGetSecret2(client SecretsManagerClient, secretName string) (*models.Sec
 		Region:       "test",
 	}, nil
 }
-
 // New mock function for MongoDB aggregation success case
 func MockAggregateSuccess(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (*mongo.Cursor, error) {
 	documents := []bson.D{
@@ -313,4 +312,36 @@ func (w *errorResponseWriter) Write([]byte) (int, error) {
 
 func (w *errorResponseWriter) WriteHeader(statusCode int) {
     w.status = statusCode
+}
+
+func TestGetUsers_DefaultRecordPerPage(t *testing.T) {
+    os.Setenv("SECRET", "test_secret")
+    defer os.Unsetenv("SECRET")
+ 
+    authenticate = MockAuthenticate2
+    getSecret = MockGetSecret2
+    aggregate = MockAggregateSuccess
+ 
+    req, err := http.NewRequest("GET", "/users?page=1", nil) // Omitting recordPerPage in the request
+    if err != nil {
+        t.Fatal(err)
+    }
+    req.Header.Set("Authorization", "Bearer valid-token")
+ 
+    rr := httptest.NewRecorder()
+    GetUsers(rr, req)
+ 
+    expectedContentType := "application/json"
+    if contentType := rr.Header().Get("Content-Type"); contentType != expectedContentType {
+        t.Errorf("handler returned wrong content type: got %v want %v",
+            contentType, expectedContentType)
+    }
+ 
+    var response map[string]interface{}
+    if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
+        t.Fatalf("error decoding response: %v", err)
+    }
+    if response["total_count"].(float64) != 1 {
+        t.Errorf("expected total_count 1, got %v", response["total_count"])
+    }
 }

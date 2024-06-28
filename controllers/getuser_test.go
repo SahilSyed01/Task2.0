@@ -30,7 +30,7 @@ func TestGetUser_Success(t *testing.T) {
     if err != nil {
         t.Fatal(err)
     }
-    req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Authorization", "Bearer valid-token")
  
     rr := httptest.NewRecorder()
  

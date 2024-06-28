@@ -54,22 +54,8 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// Create a response object
-		response := models.UserResponse{
-			FirstName: user.First_name,
-			LastName:  user.Last_name,
-			Password:  user.Password,
-			Email:     user.Email,
-			Phone:     user.Phone,
-			UserID:    user.User_id,
-		}
-
-		// Encode the response object into JSON and send it
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		
+	 json.NewEncoder(w).Encode(user);
+	 
 	})).ServeHTTP(w, r)
 }

@@ -125,3 +125,29 @@ func TestSetNewWithClaimsFunc(t *testing.T) {
     // Now, newWithClaimsFunc should be updated with mockFunc
     assert.Equal(t, newWithClaimsFunc(jwt.SigningMethodHS256, jwt.MapClaims{}).Method.Alg(), "HS256")
 }
+func TestValidateToken_ErrorCastingClaims(t *testing.T) {
+    // Mocking SECRET_KEY
+    SetSecretKey("secret")
+ 
+    // Sample token
+    signedToken := "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmaXJzdF9uYW1lIjoiSm9obiIsInVpZCI6IjEyMyJ9.wKBasWto25zYrg_X_WuMcJde1TJ4RB5EyYqJmw-dBC4"
+ 
+    jwtParseWithClaim = func(tokenString string, claims jwt.Claims, keyFunc jwt.Keyfunc) (*jwt.Token, error) {
+        // Assert the keyFunc is correctly passed the secret key
+        key, _ := keyFunc(nil)
+        assert.Equal(t, []byte("secret"), key)
+ 
+        // Return a token with incorrect claims type
+        return &jwt.Token{
+            Method: jwt.SigningMethodHS256,
+            Raw:    "test",
+            Claims: &jwt.StandardClaims{},
+            Valid:  true,
+        }, nil
+    }
+ 
+    // Call the method being tested
+    claims, _ := ValidateToken(signedToken)
+ 
+    assert.Nil(t, claims)
+}

@@ -1,212 +1,215 @@
+// middleware_test.go
 package middleware
- 
+
 import (
-    "context"
-    "encoding/json"
-    "errors"
-    "go-chat-app/models"
-    "net/http"
-    "net/http/httptest"
-    "os"
-    "testing"
- 
-    "github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-    "github.com/aws/aws-sdk-go/aws"
- 
-    // "github.com/aws/smithy-go"
- 
-    // "github.com/aws/aws-sdk-go/service/secretsmanager/secretsmanageriface"
-    "github.com/stretchr/testify/assert"
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/ShreerajShettyK/cognitoJwtAuthenticator"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
+
+// Mocks for Secrets Manager and Cognito
+// Mocks for Secrets Manager and Cognito
+type mockSecretsManagerClient struct {
+	MockSecretString        string
+	MockGetSecretValueError bool
+}
+
+func (m *mockSecretsManagerClient) GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+	if m.MockGetSecretValueError {
+		return nil, errors.New("mock error: GetSecretValue failed")
+	}
+
+	// Mock secret value
+	secretString := `{"USER_POOL_ID": "mock-user-pool-id", "REGION": "mock-region"}`
+	if m.MockSecretString != "" {
+		secretString = m.MockSecretString
+	}
+
+	output := &secretsmanager.GetSecretValueOutput{
+		SecretString: aws.String(secretString),
+	}
+	return output, nil
+}
+
+// Mock function for Cognito token validation
+func mockCognitoValidate(ctx context.Context, region string, userPoolID string, tokenString string) (*cognitoJwtAuthenticator.AWSCognitoClaims, error) {
+	// Mock token validation (always return true for simplicity)
+	return &cognitoJwtAuthenticator.AWSCognitoClaims{}, nil
+}
+
+func init() {
+	// Override environment variables for testing
+	os.Setenv("REGION", "mock-region")
+	os.Setenv("SECRET", "mock-secret-name")
+}
+
+// TestAuthenticateMiddleware tests the Authenticate middleware function
 func TestAuthenticateMiddleware(t *testing.T) {
-    // Mock handler to simulate the next handler in the chain
-    mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        // Mock handler does nothing for now
-        w.WriteHeader(http.StatusOK)
-    })
- 
-    // Mock request with a valid JWT token
-    reqValidToken := httptest.NewRequest("GET", "/test", nil)
-    reqValidToken.Header.Set("Authorization", "Bearer valid_token")
- 
-    // Mock request with missing Authorization header
-    reqMissingAuthHeader := httptest.NewRequest("GET", "/test", nil)
- 
-    // Mock request with invalid Authorization header format
-    reqInvalidAuthHeader := httptest.NewRequest("GET", "/test", nil)
-    reqInvalidAuthHeader.Header.Set("Authorization", "InvalidFormat")
- 
-    // Mock request with token missing Bearer prefix
-    reqTokenNoBearer := httptest.NewRequest("GET", "/test", nil)
-    reqTokenNoBearer.Header.Set("Authorization", "valid_token")
- 
-    // Mock request with invalid JSON in Secrets Manager response
-    reqInvalidSecretJSON := httptest.NewRequest("GET", "/test", nil)
-    reqInvalidSecretJSON.Header.Set("Authorization", "Bearer valid_token")
- 
-    // Mock request with JWT token validation failure
-    reqInvalidToken := httptest.NewRequest("GET", "/test", nil)
-    reqInvalidToken.Header.Set("Authorization", "Bearer invalid_token")
- 
-    // Mock request with valid JWT token and secret retrieval error
-    reqValidTokenSecretError := httptest.NewRequest("GET", "/test", nil)
-    reqValidTokenSecretError.Header.Set("Authorization", "Bearer valid_token")
- 
-    // Set environment variables for testing
-    os.Setenv("REGION", "us-east-1")
-    os.Setenv("SECRET", "your-secret-name")
-   
-    t.Run("Missing Authorization Header", func(t *testing.T) {
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqMissingAuthHeader.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusUnauthorized, rr.Code, "Status code does not match")
-    })
- 
-    t.Run("Invalid Authorization Header Format", func(t *testing.T) {
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqInvalidAuthHeader.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusUnauthorized, rr.Code, "Status code does not match")
-    })
- 
-    t.Run("Token Missing Bearer Prefix", func(t *testing.T) {
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqTokenNoBearer.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusUnauthorized, rr.Code, "Status code does not match")
-    })
- 
-    t.Run("Valid Token with Missing Secret Environment Variables", func(t *testing.T) {
-        // Unset environment variables for this test case
-        os.Unsetenv("REGION")
-        os.Unsetenv("SECRET")
- 
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqValidToken.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusInternalServerError, rr.Code, "Status code does not match")
- 
-        // Reset environment variables
-        os.Setenv("REGION", "us-east-1")
-        os.Setenv("SECRET", "your-secret-name")
-    })
- 
-    t.Run("Invalid Secret JSON", func(t *testing.T) {
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqInvalidSecretJSON.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusNotFound, rr.Code, "Status code does not match")
-    })
- 
-    t.Run("Valid Token with Secret Retrieval Error", func(t *testing.T) {
-        // Unset environment variables for this test case
-        os.Unsetenv("REGION")
-        os.Unsetenv("SECRET")
- 
-        rr := httptest.NewRecorder()
-        ctx := context.Background()
- 
-        handler := Authenticate(mockHandler)
-        handler.ServeHTTP(rr, reqValidTokenSecretError.WithContext(ctx))
- 
-        assert.Equal(t, http.StatusInternalServerError, rr.Code, "Status code does not match")
-        // Reset environment variables
-        os.Setenv("REGION", "us-east-1")
-        os.Setenv("SECRET", "your-secret-name")
-    })
+	// Set up a mock handler to simulate the next handler in the chain
+	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Mock initialization
+	secretsClient = &mockSecretsManagerClient{}
+	cognitovalidate = mockCognitoValidate
+
+	// Create a request with a valid token
+	reqValidToken, _ := http.NewRequest("GET", "/", nil)
+	reqValidToken.Header.Set("Authorization", "Bearer valid-token")
+
+	// Create a request with missing authorization header
+	reqMissingHeader, _ := http.NewRequest("GET", "/", nil)
+
+	// Create a request with invalid authorization header format
+	reqInvalidHeaderFormat, _ := http.NewRequest("GET", "/", nil)
+	reqInvalidHeaderFormat.Header.Set("Authorization", "invalid-format")
+
+	// Create a test server with the Authenticate middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Authenticate(mockHandler).ServeHTTP(w, r)
+	})
+
+	// Test case: valid token
+	rrValidToken := httptest.NewRecorder()
+	handler.ServeHTTP(rrValidToken, reqValidToken)
+	if rrValidToken.Code != http.StatusOK {
+		t.Errorf("Valid token test: expected status %d, got %d", http.StatusOK, rrValidToken.Code)
+	}
+
+	// Test case: missing authorization header
+	rrMissingHeader := httptest.NewRecorder()
+	handler.ServeHTTP(rrMissingHeader, reqMissingHeader)
+	if rrMissingHeader.Code != http.StatusUnauthorized {
+		t.Errorf("Missing header test: expected status %d, got %d", http.StatusUnauthorized, rrMissingHeader.Code)
+	}
+
+	// Test case: invalid authorization header format
+	rrInvalidHeaderFormat := httptest.NewRecorder()
+	handler.ServeHTTP(rrInvalidHeaderFormat, reqInvalidHeaderFormat)
+	if rrInvalidHeaderFormat.Code != http.StatusUnauthorized {
+		t.Errorf("Invalid header format test: expected status %d, got %d", http.StatusUnauthorized, rrInvalidHeaderFormat.Code)
+	}
 }
- 
- 
-// MockSecretsManagerClient is a mock of the SecretsManagerClient interface
-type MockSecretsManagerClient struct {
-    GetSecretValueFunc func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+
+// Test case for error when fetching secret value
+func TestAuthenticateErrorFetchingSecret(t *testing.T) {
+	// Set up a mock handler to simulate the next handler in the chain
+	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Mock initialization
+	secretsClient = &mockSecretsManagerClient{}
+	cognitovalidate = mockCognitoValidate
+
+	// Create a request with a valid token
+	reqValidToken, _ := http.NewRequest("GET", "/", nil)
+	reqValidToken.Header.Set("Authorization", "Bearer valid-token")
+
+	// Simulate an error in fetching the secret value
+	mockSecretsClient := secretsClient.(*mockSecretsManagerClient)
+	mockSecretsClient.MockGetSecretValueError = true
+
+	// Create a test server with the Authenticate middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Authenticate(mockHandler).ServeHTTP(w, r)
+	})
+
+	// Perform request
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, reqValidToken)
+
+	// Verify response status code
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+	// Verify error message in response
+	expectedError := "Internal server error"
+	if body := rr.Body.String(); !strings.Contains(body, expectedError) {
+		t.Errorf("Expected response body to contain '%s', got '%s'", expectedError, body)
+	}
 }
- 
-// GetSecretValue implements SecretsManagerClient
-func (m *MockSecretsManagerClient) GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-    return m.GetSecretValueFunc(ctx, input, optFns...)
+
+// Test case for error when unmarshalling secret string
+func TestAuthenticateErrorUnmarshalSecret(t *testing.T) {
+	// Set up a mock handler to simulate the next handler in the chain
+	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Mock initialization
+	secretsClient = &mockSecretsManagerClient{
+		MockSecretString: "invalid-json", // Simulate invalid JSON in secret string
+	}
+	cognitovalidate = mockCognitoValidate
+
+	// Create a request with a valid token
+	reqValidToken, _ := http.NewRequest("GET", "/", nil)
+	reqValidToken.Header.Set("Authorization", "Bearer valid-token")
+
+	// Create a test server with the Authenticate middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Authenticate(mockHandler).ServeHTTP(w, r)
+	})
+
+	// Perform request
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, reqValidToken)
+
+	// Verify response status code
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+	// Verify error message in response
+	expectedError := "Failed to unmarshal secret"
+	if body := rr.Body.String(); !strings.Contains(body, expectedError) {
+		t.Errorf("Expected response body to contain '%s', got '%s'", expectedError, body)
+	}
 }
- 
-func TestGetSecret(t *testing.T) {
-    originalSecretsManagerClient := secretsManagerClient
-    defer func() { secretsManagerClient = originalSecretsManagerClient }()
- 
-    secretName := "testSecret"
-    region := "us-west-2"
- 
-    validSecret := &models.SecretsManagerSecret{
-        UserPoolID: "testPoolID",
-        Region:     "us-west-2",
-    }
-    validSecretString, _ := json.Marshal(validSecret)
- 
-    secretsManagerClient = &MockSecretsManagerClient{
-        GetSecretValueFunc: func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-            if *input.SecretId == secretName {
-                return &secretsmanager.GetSecretValueOutput{
-                    SecretString: aws.String(string(validSecretString)),
-                }, nil
-            }
-            return nil, errors.New("some error")
-        },
-    }
- 
-    // Positive case: valid secret
-    secret, err := GetSecretValue(region, secretName)
-    assert.NoError(t, err)
-    assert.NotNil(t, secret)
-    assert.Equal(t, "testPoolID", secret.UserPoolID)
-    assert.Equal(t, "us-west-2", secret.Region)
- 
-    // Negative case: secret retrieval error
-    secretsManagerClient.(*MockSecretsManagerClient).GetSecretValueFunc = func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-        return nil, errors.New("some error")
-    }
- 
-    secret, err = GetSecretValue(region, secretName)
-    assert.Error(t, err)
-    assert.Nil(t, secret)
-    assert.IsType(t, SecretRetrievalError{}, err)
-    assert.Equal(t, "Secret retrieval error: some error", err.Error())
- 
-    // Negative case: secret string is nil
-    secretsManagerClient.(*MockSecretsManagerClient).GetSecretValueFunc = func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-        return &secretsmanager.GetSecretValueOutput{
-            SecretString: nil,
-        }, nil
-    }
- 
-    secret, err = GetSecretValue(region, secretName)
-    assert.Error(t, err)
-    assert.Nil(t, secret)
-    assert.IsType(t, SecretRetrievalError{}, err)
-    assert.Equal(t, "Secret retrieval error: secret string is nil", err.Error())
- 
-    // Negative case: invalid JSON in secret string
-    secretsManagerClient.(*MockSecretsManagerClient).GetSecretValueFunc = func(ctx context.Context, input *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-        return &secretsmanager.GetSecretValueOutput{
-            SecretString: aws.String("invalid json"),
-        }, nil
-    }
- 
-    secret, err = GetSecretValue(region, secretName)
-    assert.Error(t, err)
-    assert.Nil(t, secret)
-    assert.Contains(t, err.Error(), "invalid character")
+
+// Test case for error in token validation
+func TestAuthenticateErrorTokenValidation(t *testing.T) {
+	// Set up a mock handler to simulate the next handler in the chain
+	mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Mock initialization
+	secretsClient = &mockSecretsManagerClient{}
+	cognitovalidate = func(ctx context.Context, region string, userPoolID string, tokenString string) (*cognitoJwtAuthenticator.AWSCognitoClaims, error) {
+		return nil, errors.New("mock error: token validation failed")
+	}
+
+	// Create a request with a valid token
+	reqValidToken, _ := http.NewRequest("GET", "/", nil)
+	reqValidToken.Header.Set("Authorization", "Bearer invalid-token")
+
+	// Create a test server with the Authenticate middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Authenticate(mockHandler).ServeHTTP(w, r)
+	})
+
+	// Perform request
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, reqValidToken)
+
+	// Verify response status code
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status %d, got %d", http.StatusUnauthorized, rr.Code)
+	}
+	// Verify error message in response
+	expectedError := "Unauthorized"
+	if body := rr.Body.String(); !strings.Contains(body, expectedError) {
+		t.Errorf("Expected response body to contain '%s', got '%s'", expectedError, body)
+	}
 }
+
