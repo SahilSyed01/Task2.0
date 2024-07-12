@@ -47,7 +47,7 @@ func DBinstance() *mongo.Client {
 
 	// Retrieve the MongoDB connection string from Secrets Manager
 	secretValue, err := secretsManagerClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String("myApp/mongo-db-credentials"), // Replace with your secret ID
+		SecretId: aws.String("myApp/mongo-credentials"), // Replace with your secret ID
 	})
 	if err != nil {
 		log.Println("Error retrieving secret:", err)

@@ -40,16 +40,6 @@ func main() {
 	routes.AuthRoutes()
 	routes.UserRoutes()
 
-	http.HandleFunc("/api-1", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"success":"Access granted for api-1"}`))
-	})
-
-	http.HandleFunc("/api-2", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"success":"Access granted for api-2"}`))
-	})
-
 	// New route to get JWT token
 	http.HandleFunc("/get-jwt-token", func(w http.ResponseWriter, r *http.Request) {
 		// Fetch the secret from Secrets Manager
